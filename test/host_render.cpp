@@ -198,6 +198,53 @@ int main(int argc, char **argv) {
     const auto pn = note(q, 220.f, 1.f, 0.25f);
     check(peakAbs(pn, 2000, 12000) > 0.05, "POKEY sounding with noise", peakAbs(pn, 2000, 12000));
     check(peakAbs(pn, 14000, 48000) < 1e-3, "POKEY silent after note-off", peakAbs(pn, 14000, 48000));
+    // Voice 2 must use the same distortion mode as voice 1, or it plays out of tune.
+    q.noise = 0;
+    q.duty = 2;
+    const auto p5 = note(q, 220.f, 1.f, 1.f);
+    const double f5 = mag(p5, 4800, 48000, 220.0), o5 = mag(p5, 4800, 48000, 233.0);
+    check(f5 > 10 * o5, "POKEY 5-bit poly pitch (fund / 233 Hz)", f5 / o5);
+  }
+  {
+    // Robustness: every chip, extreme frequencies and out-of-range parameters.
+    static Apu a;
+    a.init(48000.f);
+    bool ok = true;
+    float worst = 0.f;
+    const float freqs[] = {0.f, 1.f, 20.f, 440.f, 12000.f, 30000.f, 1e9f};
+    for (int c = 0; c < 9; ++c) { // 7 and 8 are out of range on purpose
+      for (int variant = 0; variant < 4; ++variant) {
+        for (float hz : freqs) {
+          ApuParams q;
+          q.chip = static_cast<Chip>(c);
+          q.duty = static_cast<uint8_t>(variant * 3);
+          q.sub = static_cast<uint8_t>(variant + 1);
+          q.noise = static_cast<uint8_t>(variant == 3 ? 200 : variant + 2);
+          q.arp = static_cast<uint8_t>(variant + 1);
+          q.interval = static_cast<uint8_t>(variant * 7);
+          q.vibrato = 15;
+          q.decay = static_cast<uint8_t>(variant * 5);
+          q.cutoff = variant * 0.4f;
+          q.resonant = variant & 1;
+          q.quantize = variant != 1;
+          q.detune = variant * 5.f;
+          a.setParams(q);
+          a.setFrequency(hz);
+          a.noteOn(127);
+          for (int i = 0; i < 6000; ++i) {
+            const float y = a.render();
+            if (!(y >= -1.f && y <= 1.f)) ok = false;
+            if (y > worst) worst = y;
+          }
+          a.noteOff();
+          for (int i = 0; i < 2000; ++i) {
+            const float y = a.render();
+            if (!(y >= -1.f && y <= 1.f)) ok = false;
+          }
+        }
+      }
+    }
+    check(ok, "fuzz: output finite and within [-1, 1] for all chips/params", worst);
   }
 
   p.duty = 2;

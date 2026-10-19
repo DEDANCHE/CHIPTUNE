@@ -162,15 +162,19 @@ public:
   }
 
   void setParams(const ApuParams &p) {
-    const bool chipChanged = p.chip != p_.chip;
+    const Chip oldChip = p_.chip;
     p_ = p;
-    if (chipChanged) setChip(p.chip);
+    sanitize();
+    if (p_.chip != oldChip) setChip(p_.chip);
     applyOn();
     updateSidCoefs();
     dirty_ = true;
   }
 
-  void setFrequency(float hz) { freq_ = hz; }
+  void setFrequency(float hz) {
+    const float hi = 0.45f * sr_;
+    freq_ = !(hz >= 8.f) ? 8.f : (hz > hi ? hi : hz); // also maps NaN to 8 Hz
+  }
 
   void noteOn(uint8_t velocity) {
     const bool wasIdle = sidState_ == kIdle;
@@ -226,7 +230,7 @@ public:
     const Kind ks = pokey ? Kind::kPokey : (sq ? Kind::kPulse : Kind::kWave);
     const Kind kn = pokey ? Kind::kPokey : Kind::kNoise;
     const uint8_t d1 = sq ? 2 : p_.duty;
-    const uint8_t d2 = sq ? 2 : static_cast<uint8_t>((p_.duty + 1) & 3);
+    const uint8_t d2 = pokey ? p_.duty : (sq ? 2 : static_cast<uint8_t>((p_.duty + 1) & 3));
     const uint8_t ds = pce ? p_.duty : (pokey ? 0 : 2);
     const uint8_t dn = pokey ? 4 : 0;
     float remaining = cps_;
@@ -292,6 +296,21 @@ private:
     float mixGain;
     float regMax;
   };
+
+  static uint8_t lim(uint8_t v, uint8_t hi) { return v > hi ? hi : v; }
+
+  // Keeps every parameter inside the range the lookup tables are sized for.
+  void sanitize() {
+    if (static_cast<unsigned>(p_.chip) >= static_cast<unsigned>(kNumChips)) p_.chip = kChipNES;
+    p_.duty = lim(p_.duty, 3);
+    p_.arp = lim(p_.arp, 5);
+    p_.sub = lim(p_.sub, 4);
+    p_.noise = lim(p_.noise, 5);
+    p_.decay = lim(p_.decay, 15);
+    p_.interval = lim(p_.interval, detail::kNumIntervals - 1);
+    p_.vibrato = lim(p_.vibrato, 15);
+    p_.cutoff = p_.cutoff < 0.f ? 0.f : (p_.cutoff > 1.f ? 1.f : p_.cutoff);
+  }
 
   bool squareChip() const { return p_.chip == kChipPSG || p_.chip == kChipAY; }
   bool buzz() const { return p_.chip == kChipAY && p_.sub >= 3; }
@@ -380,10 +399,10 @@ private:
     switch (c) {
     case kChipNES: spec_ = {1789773.f, 2.f, 1.f, detail::kNesNoise, 1.4f, 2048.f}; break;
     case kChipGB:  spec_ = {4194304.f, 4.f, 2.f, detail::kGbNoise, 0.7f, 2048.f}; break;
-    case kChipPSG: spec_ = {3579545.f, 4.f, 4.f, detail::kPsgNoise, 0.25f, 1023.f}; break;
-    case kChipAY:  spec_ = {2000000.f, 2.f, 2.f, detail::kAyNoise, 0.25f, 4095.f}; break;
+    case kChipPSG: spec_ = {3579545.f, 4.f, 4.f, detail::kPsgNoise, 0.2f, 1023.f}; break;
+    case kChipAY:  spec_ = {2000000.f, 2.f, 2.f, detail::kAyNoise, 0.2f, 4095.f}; break;
     case kChipPCE: spec_ = {3579545.f, 1.f, 1.f, detail::kPceNoise, 0.25f, 4095.f}; break;
-    case kChipPOKEY: spec_ = {1789773.f, 1.f, 1.f, detail::kPokeyNoise, 0.25f, 65535.f}; break;
+    case kChipPOKEY: spec_ = {1789773.f, 1.f, 1.f, detail::kPokeyNoise, 0.2f, 65535.f}; break;
     default:       spec_ = {sr_, 1.f, 1.f, detail::kNesNoise, 1.f, 2048.f}; break;
     }
     for (int v = 0; v < 16; ++v) {
@@ -683,12 +702,13 @@ private:
     }
     float mix = 0.f;
     for (int k = 0; k < 31; ++k) mix += sidFir_[k] * sidHist_[(sidHistPos_ - k) & 31];
-    mix *= 0.22f * sidEnv_ * vol_ * (1.f / 15.f);
+    mix *= 0.17f * sidEnv_ * vol_ * (1.f / 15.f);
 
     float y = mix;
     if (!sidBypass_) {
       sidLow_ += sidF_ * sidBand_;
-      const float high = mix - sidLow_ - sidQ_ * sidBand_;
+      const float in = sidQ_ < 1.f ? 0.45f * mix : mix; // resonance peaks about +10 dB; keep headroom
+      const float high = in - sidLow_ - sidQ_ * sidBand_;
       sidBand_ += sidF_ * high;
       y = sidLow_;
     }
