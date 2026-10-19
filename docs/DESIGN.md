@@ -44,10 +44,10 @@ note (w0, velocity) ─► Apu::control tick @240 Hz: envelope, 60 Hz arp, vibra
 | # | Name | Meaning |
 |---|------|---------|
 | 0 (knob A) | DUTY | pulse duty zone 12.5/25/50/75 %; GB / PCE: wave table; SID: waveform; POKEY: distortion (pure / 4-bit / 5-bit / 5+4-bit poly) |
-| 1 (knob B) | DETN/FLT | pulse 2 detune, 0..16 register steps; SID: filter cutoff (open..closed) |
-| 2 | CHIP | NES / GB / SEGA (SN76489) / ATARI (YM2149) / SID (C64) / PCE (HuC6280) / POKEY |
+| 1 (knob B) | DETN/FLT | pulse 2 detune, 0..16 register steps; SID: filter cutoff (open..closed); SHAPE_LFO adds to it |
+| 2 | CHIP | NES / GB / SEGA (SN76489) / ATARI (YM2149) / SID (C64) / PCE (HuC6280) / POKEY / VRC6 / 5B / TIA |
 | 3 | ARP | off, maj, min, oct, 5th+oct, sus4 |
-| 4 | SUB | off, −1 oct, unison; ATARI: envelope buzz saw / triangle |
+| 4 | SUB | off, −1 oct, unison, then per chip: ATARI / 5B envelope buzz saw / triangle; SID hard sync / ring mod; PCE LFO FM; POKEY high-pass |
 | 5 | NOISE | off, low, mid, high, metal, buzz |
 | 6 | DECAY | 0 hold, 1–15 envelope speed |
 | 7 | QUANT | register quantisation on/off; SID: filter resonance on/off |
@@ -64,6 +64,9 @@ note (w0, velocity) ─► Apu::control tick @240 Hz: envelope, 60 Hz arp, vibra
 | ATARI | YM2149 (Atari ST) | event-driven | 12-bit dividers, 3 dB steps, 17-bit LFSR noise, envelope "buzzer" via `SUB` = BZSAW / BZTRI, tuned to the note |
 | PCE | HuC6280 (PC Engine) | event-driven | Three 32-sample 5-bit wave channels (sine / saw / 25 % pulse / triangle; channel 2 uses the next table), 15-bit LFSR noise, 3 dB volume steps |
 | POKEY | Atari 8-bit POKEY | event-driven | 8-bit dividers on the 64 kHz base clock, 16-bit pair on 1.79 MHz for low notes, distortion via `DUTY`; voice 3 stays pure; 17-bit poly noise |
+| VRC6 | Konami VRC6 | event-driven | 2 pulses with 8 duty steps (4 zones via `DUTY`), 7-step saw as the `SUB` channel, no noise |
+| 5B | Sunsoft 5B (YM2149 variant) | event-driven | Same core as ATARI at the 1.79 MHz NES clock, including the envelope buzzer |
+| TIA | Atari 2600 TIA | event-driven | 5-bit divider on a 114-clock base, 4-bit / 5-bit / 9-bit poly distortion via `DUTY`; registers above 32 fold up by octaves, so notes below about 1 kHz are coarsely tuned |
 | SID | MOS 6581/8580 (C64) | continuous | Saw / triangle / pulse (auto PWM) voices, 23-bit LFSR noise, ADSR-style envelope, state-variable low-pass |
 
 C64 and SID are the same chip, and the Atari ST uses the YM2149, so five models cover the first four names requested; PC Engine and POKEY were added afterwards.
@@ -71,9 +74,9 @@ SID is a different engine path because its voices are continuous analog-style os
 accumulators with polyBLEP edges, run at 2x the sample rate and decimated by a 31-tap FIR. Unlike the others its
 note keeps sounding through an exponential release after note-off.
 
-PCE and POKEY notes: the SN76489 was already covered by the SEGA model. The POKEY poly counters step once per divider fire instead of at the 1.79 MHz base clock, and each mode retunes the divider so the pattern repeats at the note pitch (the 4-bit and 5-bit modes would otherwise sound far below the note). Not implemented: PCE LFO and direct-DAC mode, per-channel balance, POKEY high-pass filter, sync and 15 kHz base clock.
+PCE and POKEY notes: the SN76489 was already covered by the SEGA model. The POKEY poly counters step once per divider fire instead of at the 1.79 MHz base clock, and each mode retunes the divider so the pattern repeats at the note pitch (the 4-bit and 5-bit modes would otherwise sound far below the note). PCE `SUB` = FM: channel 2 frequency-modulates channel 1 (the HuC6280 LFO idea; depth follows `DETN`). POKEY `SUB` = HPF: voice 3 acts as the sampling clock for a high-pass latch on voice 1. Not implemented: PCE direct-DAC mode and per-channel balance, POKEY 15 kHz base clock and channel linking.
 
-Not implemented for SID: hard sync, ring modulation, band-pass/high-pass modes, per-voice routing.
+SID `SUB` = SYNC: voice 2 restarts on every wrap of voice 1 (slave ratio sweeps with the PWM LFO); `SUB` = RING: voice 1 triangle multiplied by the MSB of voice 2. The sync reset is not band-limited and ring mod is approximate. Not implemented for SID: band-pass/high-pass modes, per-voice routing.
 The 8-bit noise and combined waveforms are approximations rather than the real DAC curves.
 
 ## Measured so far (host, 48 kHz)
@@ -83,18 +86,27 @@ The 8-bit noise and combined waveforms are approximations rather than the real D
 - 440 Hz pitch: fundamental at least 38x the neighbouring bin on every chip; the YM2149 buzzer at 220 Hz is 47x.
 - SID low-pass (`cutoff` 0.6) cuts 6.6 kHz by more than 40 dB relative to open.
 - PCE saw: alias at 19.65 kHz **-61 dB**; POKEY pure square: **-56 dB**. POKEY 82 Hz uses the 16-bit pair (30x over the neighbouring bin); the 4-bit poly mode holds pitch at 39x.
+- VRC6 pulse alias **-63 dB**; 5B pitch 76x over the neighbouring bin. SID sync, ring, PCE FM and POKEY HPF each differ audibly from the plain voicing and release to silence.
+- Fuzz (12 chip values incl. 2 out of range, extreme frequencies, wild parameters, SHAPE_LFO ±1): output stays finite within ±0.95.
 - Note-off returns to silence on all chips (SID after its release tail).
+
+## Modulation and presets
+
+- `SHAPE_LFO`: SID filter cutoff += 0.5 × LFO; on event chips it modulates pulse 2 detune by up to ±8 register steps.
+- Pitch bend: ±2 semitones, applied in `process`.
+- `src/presets.h` holds 15 reference presets (`chiptune::preset(i)`); the unit API has no preset slot, so [docs/PRESETS.md](PRESETS.md) lists the values to dial in.
 
 ## Other APUs to add later (same primitives)
 
 | Chip | What it needs beyond the core |
 |------|------------------------------|
-| PCE / POKEY extras | HuC6280 LFO and 6th channel, POKEY high-pass filter and channel linking |
-| SID extras | Hard sync and ring mod (need polyBLEP at the discontinuity), real DAC/combined waveform tables |
+| Namco N163, FM chips (YM2612, OPLL, VRC7) | Wave RAM channels; FM operators need a continuous path like SID |
+| PCE / POKEY extras | HuC6280 6th channel, POKEY channel linking |
+| SID extras | polyBLEP at the sync discontinuity, real DAC/combined waveform tables |
 ## Open questions / next steps
 
 1. Build with the SDK Docker image; check unit size (<48 KB) and RAM (<48 KB; kernel table is ~4 KB, built lazily on first use).
 2. Measure CPU on hardware; worst case is the high-pitched noise/pulse event rate. Candidates: smaller kernel (8 taps), fewer phases.
 3. Verify whether static constructors run in loaded units; glue uses lazy init to be safe.
-4. Decide on use of `SHAPE_LFO`, pitch bend and the audio inputs (currently ignored).
+4. Verify the assumed ranges: pitch bend is treated as 14-bit centred on 8192 (±2 semitones), `SHAPE_LFO` as −1..1. Audio inputs are ignored; all ten parameter slots are used, so there is no switch for them.
 5. Pick a developer ID (`dev_id` in `header.c`) before distribution.

@@ -44,7 +44,7 @@ public:
       p_.cutoff = static_cast<float>(value) * (1.f / 1023.f);  // filter closure (SID)
       break;
     case CHIP:
-      p_.chip = static_cast<chiptune::Chip>(value < 0 ? 0 : (value > 6 ? 6 : value));
+      p_.chip = static_cast<chiptune::Chip>(value < 0 ? 0 : (value > 9 ? 9 : value));
       break;
     case ARP:
       p_.arp = static_cast<uint8_t>(value);
@@ -76,16 +76,31 @@ public:
 
   const char *getParameterStrValue(uint8_t index, int32_t value) const override final
   {
-    static const char *const chip[] = {"NES", "GB", "SEGA", "ATARI", "SID", "PCE", "POKEY"};
+    static const char *const chip[] = {"NES", "GB", "SEGA", "ATARI", "SID", "PCE", "POKEY", "VRC6", "5B", "TIA"};
     static const char *const arp[] = {"OFF", "MAJ", "MIN", "OCT", "5TH", "SUS4"};
-    static const char *const sub[] = {"OFF", "-1OCT", "UNI", "BZSAW", "BZTRI"};
+    static const char *const subAy[] = {"OFF", "-1OCT", "UNI", "BZSAW", "BZTRI"};
+    static const char *const subSid[] = {"OFF", "-1OCT", "UNI", "SYNC", "RING"};
+    static const char *const subPce[] = {"OFF", "-1OCT", "UNI", "FM", "UNI"};
+    static const char *const subPokey[] = {"OFF", "-1OCT", "UNI", "HPF", "UNI"};
+    static const char *const subOther[] = {"OFF", "-1OCT", "UNI", "UNI", "UNI"};
     static const char *const noise[] = {"OFF", "LOW", "MID", "HIGH", "METAL", "BUZZ"};
     static const char *const quant[] = {"OFF", "ON"};
     static const char *const intvl[] = {"UNI", "MIN3", "MAJ3", "4TH", "5TH", "OCT"};
 
+    const char *const *sub = subOther;
+    switch (p_.chip)
+    {
+    case chiptune::kChipAY:
+    case chiptune::kChipS5B:    sub = subAy; break;
+    case chiptune::kChipSID:    sub = subSid; break;
+    case chiptune::kChipPCE:    sub = subPce; break;
+    case chiptune::kChipPOKEY:  sub = subPokey; break;
+    default: break;
+    }
+
     switch (index)
     {
-    case CHIP:  return value >= 0 && value <= 6 ? chip[value] : nullptr;
+    case CHIP:  return value >= 0 && value <= 9 ? chip[value] : nullptr;
     case ARP:   return value >= 0 && value <= 5 ? arp[value] : nullptr;
     case SUB:   return value >= 0 && value <= 4 ? sub[value] : nullptr;
     case NOISE: return value >= 0 && value <= 5 ? noise[value] : nullptr;
@@ -100,7 +115,11 @@ public:
   void init(float *) override final { ensureInit(); }
 
   void setPitch(float w0) { w0_ = w0; }
-  void setShapeLfo(float) {}
+  void setShapeLfo(float lfo)
+  {
+    ensureInit();
+    apu_.setShapeMod(lfo);
+  }
 
   void noteOn(uint8_t, uint8_t velo)
   {
@@ -112,14 +131,19 @@ public:
 
   void setTempo(float) {}
   void tempo4ppqnTick(uint32_t) {}
-  void pitchBend(uint16_t) {}
+  // Assumes a 14-bit bend centred on 8192; +-2 semitones.
+  void pitchBend(uint16_t bend)
+  {
+    const float b = (static_cast<float>(bend) - 8192.f) * (1.f / 8192.f);
+    bendRatio_ = powf(2.f, (b < -1.f ? -1.f : (b > 1.f ? 1.f : b)) * (2.f / 12.f));
+  }
   void channelPressure(uint8_t) {}
   void aftertouch(uint8_t, uint8_t) {}
 
   void process(const float *__restrict, float *__restrict out, uint32_t frames) override final
   {
     ensureInit();
-    apu_.setFrequency(w0_ * static_cast<float>(getSampleRate()));
+    apu_.setFrequency(w0_ * static_cast<float>(getSampleRate()) * bendRatio_);
     for (const float *end = out + frames; out != end; ++out)
       *out = apu_.render();
   }
@@ -129,6 +153,7 @@ private:
   {
     if (ready_) return;
     ready_ = true;
+    bendRatio_ = 1.f;
     p_ = chiptune::ApuParams();
     apu_.init(static_cast<float>(getSampleRate()));
   }
@@ -136,5 +161,6 @@ private:
   chiptune::Apu apu_;
   chiptune::ApuParams p_;
   float w0_;
+  float bendRatio_;
   bool ready_;
 };
