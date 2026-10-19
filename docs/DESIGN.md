@@ -43,7 +43,7 @@ note (w0, velocity) ─► Apu::control tick @240 Hz: envelope, 60 Hz arp, vibra
 
 | # | Name | Meaning |
 |---|------|---------|
-| 0 (knob A) | PRESET | 0..44, loads `chiptune::preset(i)` (all parameters, including the duty field: pulse duty zone 12.5/25/50/75 %; GB / PCE: wave table; SID: waveform; POKEY / TIA: distortion) |
+| 0 (knob A) | PRESET | 0..59, loads `chiptune::preset(i)` (all parameters, including the duty field: pulse duty zone 12.5/25/50/75 %; GB / PCE: wave table; SID: waveform; POKEY / TIA: distortion) |
 | 1 (knob B) | DETN/FLT | pulse 2 detune, 0..16 register steps; SID: filter cutoff (open..closed); SHAPE_LFO adds to it |
 | 2 | CHIP | NES / GB / SEGA (SN76489) / ATARI (YM2149) / SID (C64) / PCE (HuC6280) / POKEY / VRC6 / 5B / TIA / N163 / FDS / PAULA |
 | 3 | ARP | off, maj, min, oct, 5th+oct, sus4 |
@@ -98,7 +98,7 @@ The 8-bit noise and combined waveforms are approximations rather than the real D
 
 - `SHAPE_LFO`: SID filter cutoff += 0.5 × LFO; on event chips it modulates pulse 2 detune by up to ±8 register steps.
 - Pitch bend: ±2 semitones, applied in `process`.
-- `src/presets.h` holds 45 reference presets (`chiptune::preset(i)`); knob A (`PRESET`) selects one, see [docs/PRESETS.md](PRESETS.md).
+- `src/presets.h` holds 60 reference presets (`chiptune::preset(i)`); knob A (`PRESET`) selects one, see [docs/PRESETS.md](PRESETS.md).
 
 ## Other APUs to add later (same primitives)
 
@@ -109,7 +109,7 @@ The 8-bit noise and combined waveforms are approximations rather than the real D
 | SID extras | polyBLEP at the sync discontinuity, real DAC/combined waveform tables |
 ## Open questions / next steps
 
-1. ~~Build with the SDK~~ Done with `tools/build_unit.ps1` (gcc 14.2.1): text 29.7 KB, data 1.3 KB, bss 5.8 KB, all well under 48 KB. Still to do: build with the SDK Docker image (gcc 10.3) and load on hardware.
+1. ~~Build with the SDK~~ Done with `tools/build_unit.ps1` (gcc 14.2.1): text 28.9 KB, data 2.5 KB, bss 5.8 KB, all well under 48 KB. Still to do: build with the SDK Docker image (gcc 10.3) and load on hardware.
 2. Measure CPU on hardware; worst case is the high-pitched noise/pulse event rate. Candidates: smaller kernel (8 taps), fewer phases.
 3. Verify whether static constructors run in loaded units; glue uses lazy init to be safe.
 4. Verify the assumed ranges: pitch bend is treated as 14-bit centred on 8192 (±2 semitones), `SHAPE_LFO` as −1..1. Audio inputs are ignored; all ten parameter slots are used, so there is no switch for them.

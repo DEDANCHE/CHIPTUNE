@@ -20,7 +20,7 @@ const __unit_header unit_header_t unit_header = {
         // min, max, center (unused), default, type, frac. bits, frac. mode, <reserved>, name
 
         // A knob: preset 0..32 (see src/presets.h); a preset sets every parameter, duty included
-        {0, 44, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"PRESET"}},
+        {0, 59, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"PRESET"}},
         // B knob: pulse 2 detune in period-register steps (0..16); on SID the filter cutoff (open..closed)
         {0, 1023, 0, 0, k_unit_param_type_none, 0, 0, 0, {"DETN/FLT"}},
 
