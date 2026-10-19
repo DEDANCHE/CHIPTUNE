@@ -135,7 +135,7 @@ public:
   void pitchBend(uint16_t bend)
   {
     const float b = (static_cast<float>(bend) - 8192.f) * (1.f / 8192.f);
-    bendRatio_ = powf(2.f, (b < -1.f ? -1.f : (b > 1.f ? 1.f : b)) * (2.f / 12.f));
+    bend_ = b < -1.f ? -1.f : (b > 1.f ? 1.f : b);
   }
   void channelPressure(uint8_t) {}
   void aftertouch(uint8_t, uint8_t) {}
@@ -143,7 +143,7 @@ public:
   void process(const float *__restrict, float *__restrict out, uint32_t frames) override final
   {
     ensureInit();
-    apu_.setFrequency(w0_ * static_cast<float>(getSampleRate()) * bendRatio_);
+    apu_.setFrequency(w0_ * static_cast<float>(getSampleRate()) * std::pow(2.f, bend_ * (2.f / 12.f)));
     for (const float *end = out + frames; out != end; ++out)
       *out = apu_.render();
   }
@@ -153,7 +153,6 @@ private:
   {
     if (ready_) return;
     ready_ = true;
-    bendRatio_ = 1.f;
     p_ = chiptune::ApuParams();
     apu_.init(static_cast<float>(getSampleRate()));
   }
@@ -161,6 +160,6 @@ private:
   chiptune::Apu apu_;
   chiptune::ApuParams p_;
   float w0_;
-  float bendRatio_;
+  float bend_; // -1..1, zero from BSS so a bend before the first render survives
   bool ready_;
 };

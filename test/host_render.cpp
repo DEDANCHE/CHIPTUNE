@@ -293,6 +293,20 @@ int main(int argc, char **argv) {
     check(diff / 19200 > 0.01, "POKEY high-pass differs from plain (mean |d|)", diff / 19200);
   }
   {
+    // SUB = 4 is plain unison on PCE and POKEY (3 is FM / high-pass), as the menu says.
+    const Chip chips[2] = {kChipPCE, kChipPOKEY};
+    for (Chip c : chips) {
+      ApuParams a, b;
+      a.chip = b.chip = c;
+      a.sub = 2;
+      b.sub = 4;
+      const auto sa = note(a, 220.f, 0.5f, 0.5f), sb = note(b, 220.f, 0.5f, 0.5f);
+      double d = 0;
+      for (size_t i = 0; i < sa.size(); ++i) d = std::fmax(d, std::fabs(sa[i] - sb[i]));
+      check(d < 1e-6, c == kChipPCE ? "PCE SUB 4 equals unison (max |d|)" : "POKEY SUB 4 equals unison (max |d|)", d);
+    }
+  }
+  {
     // Presets: every one sounds and decays to silence after note-off.
     for (int i = 0; i < kNumPresets; ++i) {
       const auto s = note(preset(i), 220.f, 2.f, 0.5f);
