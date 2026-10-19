@@ -87,8 +87,9 @@ The 8-bit noise and combined waveforms are approximations rather than the real D
 - SID low-pass (`cutoff` 0.6) cuts 6.6 kHz by more than 40 dB relative to open.
 - PCE saw: alias at 19.65 kHz **-61 dB**; POKEY pure square: **-56 dB**. POKEY 82 Hz uses the 16-bit pair (30x over the neighbouring bin); the 4-bit poly mode holds pitch at 39x.
 - VRC6 pulse alias **-63 dB**; 5B pitch 76x over the neighbouring bin. SID sync, ring, PCE FM and POKEY HPF each differ audibly from the plain voicing and release to silence.
-- Fuzz (12 chip values incl. 2 out of range, extreme frequencies, wild parameters, SHAPE_LFO ±1): output stays finite within ±0.95.
+- Fuzz (12 chip values incl. 2 out of range, extreme frequencies, wild parameters, SHAPE_LFO ±1): output stays finite within +-1 (peak 0.98 after the make-up gain).
 - Note-off returns to silence on all chips (SID after its release tail).
+- Level: the chips mix at hardware-relative levels, which left the NES / GB / PCE voicings near -23 dBFS RMS. A per-chip make-up gain (+3 to +12 dB) and a soft-knee limiter (knee 0.75) now put a plain voicing at about -9 to -13 dBFS RMS, with attack peaks of -6 to -2 dBFS on a single note; presets peak at 0.44 to 0.97.
 
 ## Modulation and presets
 
