@@ -293,6 +293,69 @@ int main(int argc, char **argv) {
     check(diff / 19200 > 0.01, "POKEY high-pass differs from plain (mean |d|)", diff / 19200);
   }
   {
+    // Wavetable chips: pitch accuracy, wave selection, voicing modes, release.
+    const Chip wt[3] = {kChipN163, kChipFDS, kChipPaula};
+    const char *const nm[3] = {"N163", "FDS", "Paula"};
+    for (int k = 0; k < 3; ++k) {
+      ApuParams q;
+      q.chip = wt[k];
+      q.duty = 1; // saw: strong fundamental
+      q.quantize = false;
+      const auto s = note(q, 440.f, 1.f, 1.f);
+      const double f0 = mag(s, 4800, 48000, 440.0), off = mag(s, 4800, 48000, 466.0);
+      char buf[96];
+      std::snprintf(buf, sizeof buf, "%s 440 Hz pitch accuracy (fund / 466 Hz)", nm[k]);
+      check(f0 > 10 * off, buf, f0 / off);
+      const auto hi = note(q, 3150.f, 1.f, 1.f);
+      const double hf = mag(hi, 4800, 48000, 3150.0);
+      std::snprintf(buf, sizeof buf, "%s 3150 Hz fundamental", nm[k]);
+      check(hf > 0.02, buf, hf);
+
+      ApuParams w = q;
+      w.duty = 0;
+      const auto sw = note(w, 440.f, 0.5f, 0.5f);
+      double d = 0;
+      for (size_t i = 4800; i < 24000; ++i) d += std::fabs(s[i] - sw[i]);
+      std::snprintf(buf, sizeof buf, "%s wave select changes timbre (mean |d|)", nm[k]);
+      check(d / 19200 > 0.01, buf, d / 19200);
+
+      const auto rel = note(q, 220.f, 1.5f, 0.25f);
+      std::snprintf(buf, sizeof buf, "%s silent after note-off", nm[k]);
+      check(peakAbs(rel, 20000, 72000) < 1e-3, buf, peakAbs(rel, 20000, 72000));
+    }
+    {
+      ApuParams a, b;
+      a.chip = b.chip = kChipFDS;
+      a.duty = b.duty = 0;
+      b.detune = 8.f; // FM depth
+      b.interval = 5;
+      a.interval = 5;
+      const auto sa = note(a, 220.f, 0.5f, 0.5f), sb = note(b, 220.f, 0.5f, 0.5f);
+      double d = 0;
+      for (size_t i = 4800; i < 24000; ++i) d += std::fabs(sa[i] - sb[i]);
+      check(d / 19200 > 0.01, "FDS FM depth changes the sound (mean |d|)", d / 19200);
+    }
+    for (int sub = 3; sub <= 4; ++sub) {
+      ApuParams a, b;
+      a.chip = b.chip = kChipPaula;
+      a.duty = b.duty = 2;
+      a.sub = 2;
+      b.sub = static_cast<uint8_t>(sub);
+      b.interval = 4;
+      b.detune = 8.f;
+      const auto sa = note(a, 220.f, 1.f, 0.5f), sb = note(b, 220.f, 1.f, 0.5f);
+      double d = 0;
+      for (size_t i = 4800; i < 24000; ++i) d += std::fabs(sa[i] - sb[i]);
+      char buf[96];
+      std::snprintf(buf, sizeof buf, "Paula %s sounds", sub == 3 ? "FM" : "AM");
+      check(peakAbs(sb, 4800, 24000) > 0.05, buf, peakAbs(sb, 4800, 24000));
+      std::snprintf(buf, sizeof buf, "Paula %s differs from unison (mean |d|)", sub == 3 ? "FM" : "AM");
+      check(d / 19200 > 0.01, buf, d / 19200);
+      std::snprintf(buf, sizeof buf, "Paula %s silent after note-off", sub == 3 ? "FM" : "AM");
+      check(peakAbs(sb, 36000, 48000) < 1e-3, buf, peakAbs(sb, 36000, 48000));
+    }
+  }
+  {
     // SUB = 4 is plain unison on PCE and POKEY (3 is FM / high-pass), as the menu says.
     const Chip chips[2] = {kChipPCE, kChipPOKEY};
     for (Chip c : chips) {
@@ -327,7 +390,7 @@ int main(int argc, char **argv) {
     bool ok = true;
     float worst = 0.f;
     const float freqs[] = {0.f, 1.f, 20.f, 440.f, 12000.f, 30000.f, 1e9f};
-    for (int c = 0; c < 12; ++c) { // 10 and 11 are out of range on purpose
+    for (int c = 0; c < 15; ++c) { // 13 and 14 are out of range on purpose
       for (int variant = 0; variant < 4; ++variant) {
         for (float hz : freqs) {
           ApuParams q;

@@ -1,6 +1,6 @@
 # Reference presets
 
-Knob A (PRESET, 0..32) loads these on the unit; the values below are what each preset sets.
+Knob A (PRESET, 0..44) loads these on the unit; the values below are what each preset sets.
 They are also defined in `src/presets.h` (`chiptune::preset(i)`), and the host test renders each
 one to `build/preset_<i>.wav`. Unlisted parameters are at their defaults (0 / off).
 
@@ -9,8 +9,8 @@ menu is not refreshed, so it can show stale values after a preset change; moving
 knob B afterwards edits that one parameter on top of the preset. Menu values that still equal the
 last value seen are ignored, so a patch reloaded with a preset keeps the preset's sound.
 
-Raw values: DUTY 0..3, DETN in register steps (knob B 0..1023 maps to 0..16), CHIP 0..9
-(NES, GB, SEGA, ATARI, SID, PCE, POKEY, VRC6, 5B, TIA). For SID, knob B is the filter cutoff
+Raw values: DUTY 0..3, DETN in register steps (knob B 0..1023 maps to 0..16), CHIP 0..12
+(NES, GB, SEGA, ATARI, SID, PCE, POKEY, VRC6, 5B, TIA, N163, FDS, PAULA). For SID, knob B is the filter cutoff
 (0..1 of the knob range) and QUANT is resonance.
 
 | # | Name | CHIP | DUTY | SUB | Other |
@@ -48,5 +48,17 @@ Raw values: DUTY 0..3, DETN in register steps (knob B 0..1023 maps to 0..16), CH
 | 30 | VRC6 ARP | VRC6 | 1 | -1OCT (saw) | ARP MAJ |
 | 31 | 5B LEAD | 5B | 0 | UNI | DETN 2, VIB 4 |
 | 32 | TIA PERC | TIA | 3 | off | DECAY 4 |
-The SUB names depend on the CHIP: the menu shows SYNC / RING for SID, FM for PCE, HPF for POKEY and
+| 33 | N163 BELL | N163 | 0 | off | INTVL P5, DETN 2 |
+| 34 | N163 SAW | N163 | 1 | off | VIB 5 |
+| 35 | N163 ORGAN | N163 | 2 | -1OCT | |
+| 36 | N163 BUZZ | N163 | 3 | off | DETN 3 |
+| 37 | FDS BELL | FDS | 2 | off | INTVL oct, DETN 4 (FM depth) |
+| 38 | FDS BASS | FDS | 0 | -1OCT | DETN 10 (FM depth) |
+| 39 | FDS SAW | FDS | 1 | off | ARP MAJ |
+| 40 | FDS WOBBLE | FDS | 3 | off | INTVL M3, DETN 12 (FM depth), VIB 4 |
+| 41 | AMIGA SAW | PAULA | 0 | UNI | DETN 2 |
+| 42 | AMIGA PWM | PAULA | 1 | -1OCT | |
+| 43 | AMIGA FM | PAULA | 2 | FM | INTVL P5, DETN 8 (FM depth) |
+| 44 | AMIGA AM | PAULA | 3 | AM | INTVL oct |
+The SUB names depend on the CHIP: the menu shows SYNC / RING for SID, FM for PCE, HPF for POKEY, FM / AM for PAULA and
 BZSAW / BZTRI for ATARI and 5B.
