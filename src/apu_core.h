@@ -1,7 +1,10 @@
 #pragma once
-// Event-driven chiptune APU core: chip-clock-domain channels rendered through a
-// band-limited step buffer (blip-style). Header-only, no heap, no libc state.
-// Portable: builds on the host for tests and on Cortex-M7 for the NTS-1 mkII.
+// Chiptune APU core. Two engines share one voice front-end (note, arp, vibrato):
+//   * event engine  (NES, GB, SN76489, YM2149): channels run in the chip clock
+//     domain; each output change is a band-limited step (blip-style).
+//   * analog engine (SID): per-sample phase accumulators with polyBLEP,
+//     ADSR and a state-variable low-pass.
+// Header-only, no heap. Builds on the host for tests and on Cortex-M7.
 
 #include <cmath>
 #include <cstdint>
@@ -13,6 +16,12 @@ constexpr float kNesNoise[16] = {4,   8,   16,  32,  64,  96,   128,  160,
                                  202, 254, 380, 508, 762, 1016, 2034, 4068};
 constexpr float kGbNoise[16] = {8,    16,   32,   64,    128,   256,   512,    1024,
                                 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144};
+// SN76489 shift rates: clk/512, clk/1024, clk/2048 -> LFSR period in chip clocks (x2)
+constexpr float kPsgNoise[16] = {256, 512, 1024, 1024, 1024, 1024, 1024, 1024,
+                                 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024};
+// YM2149 noise period register N (1..31) -> 16 * N chip clocks
+constexpr float kAyNoise[16] = {16,  32,  48,  64,  96,  128, 160, 192,
+                                224, 256, 320, 384, 448, 496, 496, 496};
 constexpr uint8_t kDuty[4][8] = {{0, 1, 0, 0, 0, 0, 0, 0},
                                  {0, 1, 1, 0, 0, 0, 0, 0},
                                  {0, 1, 1, 1, 1, 0, 0, 0},
@@ -21,8 +30,13 @@ constexpr int kNumIntervals = 6;
 constexpr int8_t kIntervals[kNumIntervals] = {0, 3, 4, 5, 7, 12};
 constexpr int8_t kArp[6][3] = {{0, 0, 0}, {0, 4, 7}, {0, 3, 7}, {0, 12, 0}, {0, 7, 12}, {0, 5, 7}};
 constexpr uint8_t kArpLen[6] = {1, 3, 3, 2, 3, 3};
-// noise period index per NOISE setting (off, low, mid, high, metal, buzz)
-constexpr uint8_t kNoiseIdx[6] = {0, 11, 7, 3, 4, 11};
+// NOISE setting (off, low, mid, high, metal, buzz) -> noise table index, per chip
+constexpr uint8_t kNoiseIdx[5][6] = {{0, 11, 7, 3, 4, 11},  // NES
+                                     {0, 11, 7, 3, 4, 11},  // GB
+                                     {0, 2, 1, 0, 0, 0},    // SN76489
+                                     {0, 13, 9, 4, 1, 13},  // YM2149
+                                     {0, 0, 0, 0, 0, 0}};   // SID (unused)
+constexpr float kSidNoiseHz[6] = {0.f, 150.f, 800.f, 3500.f, 9000.f, 40.f};
 } // namespace detail
 
 // Band-limited step synthesis. Every change of the chip's output level is
@@ -86,19 +100,29 @@ private:
   float acc_ = 0.f;
 };
 
-enum Chip : uint8_t { kChipNES = 0, kChipGB = 1, kNumChips = 2 };
+enum Chip : uint8_t {
+  kChipNES = 0,
+  kChipGB = 1,
+  kChipPSG = 2, // Sega SN76489
+  kChipAY = 3,  // Atari ST YM2149 (AY-3-8910 family)
+  kChipSID = 4, // Commodore 64 SID
+  kNumChips = 5
+};
 
 struct ApuParams {
   Chip chip = kChipNES;
-  uint8_t duty = 2;      // 0..3: 12.5 / 25 / 50 / 75 %  (GB: also picks wave table)
+  uint8_t duty = 2;      // 0..3. NES/GB: pulse duty 12.5/25/50/75 %, GB: wave table.
+                         //       SID: waveform tri / saw / pulse(PWM) / saw&pulse.
   uint8_t arp = 0;       // 0 off, 1 maj, 2 min, 3 oct, 4 5th+oct, 5 sus4
-  uint8_t sub = 0;       // 0 off, 1 -12 st, 2 unison (triangle / wave channel)
+  uint8_t sub = 0;       // 0 off, 1 -12 st, 2 unison, 3/4 YM2149 envelope buzz (saw/tri)
   uint8_t noise = 0;     // 0 off, 1 low, 2 mid, 3 high, 4 metal, 5 buzz
-  uint8_t decay = 0;     // 0 hold, 1..15 envelope step = decay/240 s
-  uint8_t interval = 0;  // pulse 2 interval index, see detail::kIntervals
+  uint8_t decay = 0;     // 0 hold, 1..15 decay speed
+  uint8_t interval = 0;  // voice 2 interval index, see detail::kIntervals
   uint8_t vibrato = 0;   // 0..15
   bool quantize = true;  // round to the chip's period registers
-  float detune = 0.f;    // pulse 2 offset in register steps
+  float detune = 0.f;    // voice 2 offset in register steps (not SID)
+  float cutoff = 0.f;    // SID only: 0 = filter open .. 1 = closed
+  bool resonant = false; // SID only: high filter resonance
 };
 
 class Apu {
@@ -107,17 +131,21 @@ public:
   void init(float sampleRate) {
     sr_ = sampleRate;
     p_ = ApuParams();
-    p1_ = p2_ = sub_ = noise_ = Chan();
+    p1_ = p2_ = sub_ = noise_ = env_ = Chan();
     freq_ = 440.f;
     vol_ = 15.f;
     level_ = dc_ = 0.f;
     vibPhase_ = vibValue_ = 0.f;
     envTicks_ = arpTick_ = arpStep_ = vibDelay_ = 0;
     gate_ = false;
+    for (int i = 0; i < 4; ++i) sv_[i] = SidVoice();
+    sidState_ = kIdle;
+    sidEnv_ = sidLow_ = sidBand_ = pwPhase_ = 0.f;
     blip_.init();
     buildWaves();
     ctrlPeriod_ = sr_ / 240.f;
     setChip(p_.chip);
+    updateSidCoefs();
     dirty_ = false;
   }
 
@@ -125,14 +153,15 @@ public:
     const bool chipChanged = p.chip != p_.chip;
     p_ = p;
     if (chipChanged) setChip(p.chip);
-    sub_.on = p_.sub != 0 && gate_;
-    noise_.on = p_.noise != 0 && gate_;
+    applyOn();
+    updateSidCoefs();
     dirty_ = true;
   }
 
   void setFrequency(float hz) { freq_ = hz; }
 
   void noteOn(uint8_t velocity) {
+    const bool wasIdle = sidState_ == kIdle;
     gate_ = true;
     vol_ = static_cast<float>(1 + (velocity * 14) / 127);
     envTicks_ = 0;
@@ -141,24 +170,28 @@ public:
     vibPhase_ = 0.f;
     vibValue_ = 0.f;
     vibDelay_ = 48;
-    p1_ = Chan();
-    p2_ = Chan();
-    sub_ = Chan();
-    noise_ = Chan();
-    p1_.on = p2_.on = true;
-    sub_.on = p_.sub != 0;
-    noise_.on = p_.noise != 0;
+    p1_ = p2_ = sub_ = noise_ = env_ = Chan();
+    noise_.lfsr = p_.chip == kChipPSG ? 0x8000u : 1u;
+    env_.level = 15;
+    applyOn();
     updatePeriods();
     p1_.timer = p1_.period;
     p2_.timer = p2_.period;
     sub_.timer = sub_.period;
     noise_.timer = noise_.period;
+    env_.timer = env_.period;
+    if (wasIdle) {
+      for (int i = 0; i < 4; ++i) sv_[i] = SidVoice();
+      updatePeriods();
+    }
+    sidState_ = kAttack;
     dirty_ = true;
   }
 
   void noteOff() {
     gate_ = false;
-    p1_.on = p2_.on = sub_.on = noise_.on = false;
+    applyOn();
+    if (sidState_ != kIdle) sidState_ = kRelease;
     dirty_ = true;
   }
 
@@ -167,11 +200,16 @@ public:
       ctrlAcc_ -= ctrlPeriod_;
       controlTick();
     }
+    if (p_.chip == kChipSID) return renderSid();
+
     if (dirty_) {
       syncLevel(0.f);
       dirty_ = false;
     }
 
+    const bool sq = squareChip();
+    const uint8_t d1 = sq ? 2 : p_.duty;
+    const uint8_t d2 = sq ? 2 : static_cast<uint8_t>((p_.duty + 1) & 3);
     float remaining = cps_;
     for (;;) {
       float dt = remaining;
@@ -179,13 +217,15 @@ public:
       if (p2_.on && p2_.timer < dt) dt = p2_.timer;
       if (sub_.on && sub_.timer < dt) dt = sub_.timer;
       if (noise_.on && noise_.timer < dt) dt = noise_.timer;
+      if (env_.on && env_.timer < dt) dt = env_.timer;
       remaining -= dt;
 
       bool fired = false;
-      if (p1_.on) fired |= tick(p1_, dt, Kind::kPulse, p_.duty);
-      if (p2_.on) fired |= tick(p2_, dt, Kind::kPulse, (p_.duty + 1) & 3);
-      if (sub_.on) fired |= tick(sub_, dt, Kind::kWave, 0);
+      if (p1_.on) fired |= tick(p1_, dt, Kind::kPulse, d1);
+      if (p2_.on) fired |= tick(p2_, dt, Kind::kPulse, d2);
+      if (sub_.on) fired |= tick(sub_, dt, sq ? Kind::kPulse : Kind::kWave, 2);
       if (noise_.on) fired |= tick(noise_, dt, Kind::kNoise, 0);
+      if (env_.on) fired |= tick(env_, dt, Kind::kEnv, 0);
       if (fired) syncLevel((cps_ - remaining) / cps_);
       if (remaining <= 0.f) break;
     }
@@ -203,25 +243,47 @@ public:
   }
 
 private:
-  enum class Kind { kPulse, kWave, kNoise };
+  enum class Kind { kPulse, kWave, kNoise, kEnv };
+  enum SidState : uint8_t { kIdle, kAttack, kDecay, kSustain, kRelease };
 
   struct Chan {
     float timer = 0.f;
     float period = 1.0e9f;
+    uint32_t lfsr = 1;
     uint8_t seq = 0;
     uint8_t bit = 0;
-    uint8_t level = 0; // wave channel output, 0..15
-    uint16_t lfsr = 1;
+    uint8_t level = 0; // wave / envelope output, 0..15
     bool on = false;
+  };
+
+  struct SidVoice {
+    uint32_t acc = 0;
+    uint32_t inc = 0;
+    uint32_t lfsr = 0x7FFFF8u;
+    float noise = 0.f;
   };
 
   struct ChipSpec {
     float clk;
-    float pulseUnit; // chip clocks per register unit, pulse
+    float pulseUnit; // chip clocks per register unit, pulse / square
     float waveUnit;  // chip clocks per register unit, triangle / wave
     const float *noiseTable;
     float mixGain;
+    float regMax;
   };
+
+  bool squareChip() const { return p_.chip == kChipPSG || p_.chip == kChipAY; }
+  bool buzz() const { return p_.chip == kChipAY && p_.sub >= 3; }
+
+  void applyOn() {
+    const bool g = gate_;
+    const bool b = buzz();
+    p1_.on = g && !b;
+    p2_.on = g;
+    sub_.on = g && p_.sub != 0 && !b;
+    noise_.on = g && p_.noise != 0;
+    env_.on = g && b;
+  }
 
   bool tick(Chan &c, float dt, Kind kind, uint8_t arg) {
     c.timer -= dt;
@@ -239,21 +301,53 @@ private:
       else
         c.level = gbWave_[p_.duty][c.seq];
       break;
-    case Kind::kNoise: {
-      const bool shortMode = p_.noise == 4 || p_.noise == 5;
-      const uint16_t fb = (c.lfsr ^ (c.lfsr >> (shortMode ? 6 : 1))) & 1;
-      c.lfsr = static_cast<uint16_t>((c.lfsr >> 1) | (fb << 14));
-      c.bit = (c.lfsr & 1) ? 0 : 1;
+    case Kind::kNoise:
+      stepNoise(c);
+      break;
+    case Kind::kEnv: {
+      const bool tri = p_.sub == 4;
+      c.seq = static_cast<uint8_t>((c.seq + 1) % (tri ? 32 : 16));
+      c.level = tri ? (c.seq < 16 ? 15 - c.seq : c.seq - 16) : 15 - c.seq;
       break;
     }
     }
     return true;
   }
 
+  void stepNoise(Chan &c) {
+    const bool shortMode = p_.noise == 4 || p_.noise == 5;
+    if (p_.chip == kChipPSG) {
+      const uint32_t fb = shortMode ? (c.lfsr & 1) : ((c.lfsr ^ (c.lfsr >> 3)) & 1);
+      c.lfsr = (c.lfsr >> 1) | (fb << 15);
+      c.bit = c.lfsr & 1;
+    } else if (p_.chip == kChipAY) {
+      const uint32_t fb = (c.lfsr ^ (c.lfsr >> 3)) & 1;
+      c.lfsr = (c.lfsr >> 1) | (fb << 16);
+      c.bit = c.lfsr & 1;
+    } else {
+      const uint32_t fb = (c.lfsr ^ (c.lfsr >> (shortMode ? 6 : 1))) & 1;
+      c.lfsr = (c.lfsr >> 1) | (fb << 14);
+      c.bit = (c.lfsr & 1) ? 0 : 1;
+    }
+  }
+
   void setChip(Chip c) {
     p_.chip = c;
-    spec_ = c == kChipNES ? ChipSpec{1789773.f, 2.f, 1.f, detail::kNesNoise, 1.4f}
-                          : ChipSpec{4194304.f, 4.f, 2.f, detail::kGbNoise, 0.7f};
+    switch (c) {
+    case kChipNES: spec_ = {1789773.f, 2.f, 1.f, detail::kNesNoise, 1.4f, 2048.f}; break;
+    case kChipGB:  spec_ = {4194304.f, 4.f, 2.f, detail::kGbNoise, 0.7f, 2048.f}; break;
+    case kChipPSG: spec_ = {3579545.f, 4.f, 4.f, detail::kPsgNoise, 0.25f, 1023.f}; break;
+    case kChipAY:  spec_ = {2000000.f, 2.f, 2.f, detail::kAyNoise, 0.25f, 4095.f}; break;
+    default:       spec_ = {sr_, 1.f, 1.f, detail::kNesNoise, 1.f, 2048.f}; break;
+    }
+    for (int v = 0; v < 16; ++v) {
+      if (v == 0)
+        amp_[v] = 0.f;
+      else if (c == kChipPSG)
+        amp_[v] = std::pow(10.f, -(15 - v) * 0.1f); // 2 dB per step
+      else
+        amp_[v] = std::pow(2.f, -(15 - v) * 0.5f);  // 3 dB per step
+    }
     cps_ = spec_.clk / sr_;
     ctrlAcc_ = 0.f;
     dirty_ = true;
@@ -261,7 +355,17 @@ private:
 
   void buildWaves() {
     const float tau = 6.28318530718f;
-    auto q = [](float v) { // -1..1 -> 0..15
+    // 31-tap Hamming low-pass (about 21 kHz at 96 kHz) decimating the 2x SID engine
+    float fsum = 0.f;
+    for (int k = 0; k < 31; ++k) {
+      const float n = static_cast<float>(k - 15);
+      const float w = tau * 0.21875f * n;
+      const float s = n == 0.f ? 1.f : std::sin(w) / w;
+      sidFir_[k] = s * (0.54f + 0.46f * std::cos(tau * 0.5f * n / 15.5f));
+      fsum += sidFir_[k];
+    }
+    for (int k = 0; k < 31; ++k) sidFir_[k] /= fsum;
+    auto q =  [](float v) { // -1..1 -> 0..15
       const int n = static_cast<int>((v * 0.5f + 0.5f) * 15.f + 0.5f);
       return static_cast<uint8_t>(n < 0 ? 0 : (n > 15 ? 15 : n));
     };
@@ -277,14 +381,20 @@ private:
 
   // Chip clocks per step for a note frequency. Folds the register into range
   // by octaves and rounds to the chip's period registers when quantising.
-  float stepFor(float unit, float stepsPerCycle, float hz, float detuneRegs) const {
+  float stepFor(float unit, float stepsPerCycle, float hz, float detuneRegs, float regMax) const {
     float reg = spec_.clk / (unit * stepsPerCycle * hz);
-    while (reg > 2048.f) reg *= 0.5f;
+    while (reg > regMax) reg *= 0.5f;
     if (p_.quantize) reg = std::floor(reg + 0.5f);
     reg += detuneRegs;
     if (reg < 1.f) reg = 1.f;
-    if (reg > 2048.f) reg = 2048.f;
+    if (reg > regMax) reg = regMax;
     return reg * unit;
+  }
+
+  uint32_t sidInc(float hz) const {
+    float v = hz / (2.f * sr_) * 16777216.f; // voices run at 2x and are decimated
+    if (v > 8388607.f) v = 8388607.f;
+    return static_cast<uint32_t>(v);
   }
 
   void updatePeriods() {
@@ -293,15 +403,32 @@ private:
     const float f1 = freq_ * std::pow(2.f, (arpSemi + vibValue_) / 12.f);
     const float f2 = freq_ * std::pow(2.f, (arpSemi + semi2 + vibValue_) / 12.f);
     const float fs = freq_ * std::pow(2.f, (vibValue_ + (p_.sub == 1 ? -12.f : 0.f)) / 12.f);
-    p1_.period = stepFor(spec_.pulseUnit, 8.f, f1, 0.f);
-    p2_.period = stepFor(spec_.pulseUnit, 8.f, f2, p_.detune);
-    sub_.period = stepFor(spec_.waveUnit, 32.f, fs, 0.f);
-    noise_.period = spec_.noiseTable[detail::kNoiseIdx[p_.noise]];
+
+    if (p_.chip == kChipSID) {
+      sv_[0].inc = sidInc(f1);
+      sv_[1].inc = sidInc(f2 * 1.00406f); // fixed +7 cent spread
+      sv_[2].inc = sidInc(fs);
+      sv_[3].inc = sidInc(detail::kSidNoiseHz[p_.noise]);
+      return;
+    }
+
+    const float rm = spec_.regMax;
+    p1_.period = stepFor(spec_.pulseUnit, 8.f, f1, 0.f, rm);
+    p2_.period = stepFor(spec_.pulseUnit, 8.f, f2, p_.detune, rm);
+    sub_.period = squareChip() ? stepFor(spec_.pulseUnit, 8.f, fs, 0.f, rm)
+                               : stepFor(spec_.waveUnit, 32.f, fs, 0.f, rm);
+    noise_.period = spec_.noiseTable[detail::kNoiseIdx[p_.chip][p_.noise]];
+    if (p_.chip == kChipPSG && p_.noise == 5) { // pitched periodic noise
+      const float per = spec_.clk / (16.f * f1);
+      noise_.period = per < 4.f ? 4.f : per;
+    }
+    if (p_.chip == kChipAY)
+      env_.period = stepFor(16.f, p_.sub == 4 ? 32.f : 16.f, f1, 0.f, 65535.f);
   }
 
   void controlTick() {
     if (!gate_) return;
-    if (p_.decay && ++envTicks_ >= p_.decay) {
+    if (p_.decay && p_.chip != kChipSID && ++envTicks_ >= p_.decay) {
       envTicks_ = 0;
       if (vol_ > 0.f) vol_ -= 1.f;
       dirty_ = true;
@@ -325,18 +452,34 @@ private:
 
   float mixLevel() const {
     if (!gate_) return 0.f;
-    const float a = p1_.bit ? vol_ : 0.f;
-    const float b = p2_.bit ? vol_ : 0.f;
-    const float w = sub_.on ? static_cast<float>(sub_.level) : 0.f;
-    const float n = (noise_.on && noise_.bit) ? vol_ : 0.f;
-    if (p_.chip == kChipNES) {
-      const float ps = a + b;
-      const float po = ps > 0.f ? 95.88f / (8128.f / ps + 100.f) : 0.f;
-      const float tnd = w / 8227.f + n / 12241.f;
-      const float to = tnd > 0.f ? 159.79f / (1.f / tnd + 100.f) : 0.f;
-      return (po + to) * spec_.mixGain;
+    int v = static_cast<int>(vol_);
+    v = v < 0 ? 0 : (v > 15 ? 15 : v);
+    switch (p_.chip) {
+    case kChipNES:
+    case kChipGB: {
+      const float a = p1_.bit ? vol_ : 0.f;
+      const float b = p2_.bit ? vol_ : 0.f;
+      const float w = sub_.on ? static_cast<float>(sub_.level) : 0.f;
+      const float n = (noise_.on && noise_.bit) ? vol_ : 0.f;
+      if (p_.chip == kChipNES) {
+        const float ps = a + b;
+        const float po = ps > 0.f ? 95.88f / (8128.f / ps + 100.f) : 0.f;
+        const float tnd = w / 8227.f + n / 12241.f;
+        const float to = tnd > 0.f ? 159.79f / (1.f / tnd + 100.f) : 0.f;
+        return (po + to) * spec_.mixGain;
+      }
+      return (a + b + w + n) / 60.f * spec_.mixGain;
     }
-    return (a + b + w + n) / 60.f * spec_.mixGain;
+    default: { // PSG, AY
+      const float amp = amp_[v];
+      float a = p1_.bit ? amp : 0.f;
+      if (buzz()) a = amp_[env_.level] * (vol_ * (1.f / 15.f));
+      const float b = p2_.bit ? amp : 0.f;
+      const float c = (sub_.on && sub_.bit) ? amp : 0.f;
+      const float n = (noise_.on && noise_.bit) ? amp : 0.f;
+      return (a + b + c + n) * spec_.mixGain;
+    }
+    }
   }
 
   void syncLevel(float t) {
@@ -347,11 +490,129 @@ private:
     }
   }
 
+  // ---- SID (analog engine) -------------------------------------------------
+
+  static float polyBlep(float t, float dt) {
+    if (t < dt) {
+      t /= dt;
+      return t + t - t * t - 1.f;
+    }
+    if (t > 1.f - dt) {
+      t = (t - 1.f) / dt;
+      return t * t + t + t + 1.f;
+    }
+    return 0.f;
+  }
+
+  void updateSidCoefs() {
+    const float pi = 3.14159265358979f;
+    sidAttackInc_ = 1.f / (0.002f * sr_);
+    sidDecayCoef_ = p_.decay ? std::exp(-6.9f / (p_.decay * 0.0625f * sr_)) : 1.f;
+    sidRelCoef_ = std::exp(-6.9f / (0.15f * sr_));
+    sidBypass_ = p_.cutoff < 0.01f;
+    const float fc = 9000.f * std::pow(0.00667f, p_.cutoff); // 9 kHz .. 60 Hz
+    sidF_ = 2.f * std::sin(pi * fc / sr_);
+    sidQ_ = p_.resonant ? 0.3f : 1.f;
+  }
+
+  float sidVoice(SidVoice &v, float pw) {
+    const float k = 1.f / 16777216.f;
+    const float dt = static_cast<float>(v.inc) * k;
+    v.acc = (v.acc + v.inc) & 0xFFFFFFu;
+    const float p = static_cast<float>(v.acc) * k;
+    switch (p_.duty) {
+    case 0:
+      return p < 0.5f ? 4.f * p - 1.f : 3.f - 4.f * p;
+    case 1:
+      return 2.f * p - 1.f - polyBlep(p, dt);
+    default: {
+      float q = p - pw;
+      if (q < 0.f) q += 1.f;
+      float s = (p < pw ? 1.f : -1.f) + polyBlep(p, dt) - polyBlep(q, dt);
+      if (p_.duty == 3) s *= 0.5f * ((2.f * p - 1.f - polyBlep(p, dt)) + 1.f);
+      return s;
+    }
+    }
+  }
+
+  float sidNoiseVoice(SidVoice &v) {
+    const uint32_t before = v.acc >> 20;
+    v.acc = (v.acc + v.inc) & 0xFFFFFFu;
+    uint32_t edges = ((v.acc >> 20) - before) & 0xFu;
+    while (edges--) {
+      const uint32_t fb = ((v.lfsr >> 22) ^ (v.lfsr >> 17)) & 1;
+      v.lfsr = ((v.lfsr << 1) | fb) & 0x7FFFFFu;
+      const uint32_t bits = ((v.lfsr >> 20) & 1) << 7 | ((v.lfsr >> 18) & 1) << 6 |
+                            ((v.lfsr >> 14) & 1) << 5 | ((v.lfsr >> 11) & 1) << 4 |
+                            ((v.lfsr >> 9) & 1) << 3 | ((v.lfsr >> 5) & 1) << 2 |
+                            ((v.lfsr >> 2) & 1) << 1 | (v.lfsr & 1);
+      v.noise = static_cast<float>(bits) * (1.f / 127.5f) - 1.f;
+    }
+    return v.noise;
+  }
+
+  float renderSid() {
+    switch (sidState_) {
+    case kAttack:
+      sidEnv_ += sidAttackInc_;
+      if (sidEnv_ >= 1.f) {
+        sidEnv_ = 1.f;
+        sidState_ = p_.decay ? kDecay : kSustain;
+      }
+      break;
+    case kDecay:
+      sidEnv_ *= sidDecayCoef_;
+      if (sidEnv_ < 1e-3f) {
+        sidEnv_ = 0.f;
+        sidState_ = kSustain;
+      }
+      break;
+    case kRelease:
+      sidEnv_ *= sidRelCoef_;
+      if (sidEnv_ < 1e-4f) {
+        sidEnv_ = 0.f;
+        sidState_ = kIdle;
+      }
+      break;
+    default:
+      break;
+    }
+    if (sidState_ == kIdle || sidEnv_ == 0.f) {
+      sidLow_ = sidBand_ = 0.f;
+      return 0.f;
+    }
+
+    pwPhase_ += 0.8f / sr_;
+    if (pwPhase_ >= 1.f) pwPhase_ -= 1.f;
+    const float pw = 0.5f + 0.4f * (pwPhase_ < 0.5f ? 4.f * pwPhase_ - 1.f : 3.f - 4.f * pwPhase_);
+
+    for (int s = 0; s < 2; ++s) {
+      float m = sidVoice(sv_[0], pw) + sidVoice(sv_[1], pw);
+      if (p_.sub) m += sidVoice(sv_[2], pw);
+      if (p_.noise) m += sidNoiseVoice(sv_[3]);
+      sidHistPos_ = (sidHistPos_ + 1) & 31;
+      sidHist_[sidHistPos_] = m;
+    }
+    float mix = 0.f;
+    for (int k = 0; k < 31; ++k) mix += sidFir_[k] * sidHist_[(sidHistPos_ - k) & 31];
+    mix *= 0.22f * sidEnv_ * vol_ * (1.f / 15.f);
+
+    float y = mix;
+    if (!sidBypass_) {
+      sidLow_ += sidF_ * sidBand_;
+      const float high = mix - sidLow_ - sidQ_ * sidBand_;
+      sidBand_ += sidF_ * high;
+      y = sidLow_;
+    }
+    return y > 1.f ? 1.f : (y < -1.f ? -1.f : y);
+  }
+
   BlipBuf blip_;
   ApuParams p_;
-  ChipSpec spec_{1789773.f, 2.f, 1.f, detail::kNesNoise, 1.4f};
-  Chan p1_, p2_, sub_, noise_;
+  ChipSpec spec_{1789773.f, 2.f, 1.f, detail::kNesNoise, 1.4f, 2048.f};
+  Chan p1_, p2_, sub_, noise_, env_;
   uint8_t gbWave_[4][32] = {};
+  float amp_[16] = {};
   float sr_ = 48000.f;
   float cps_ = 37.28f;
   float ctrlPeriod_ = 200.f;
@@ -368,6 +629,22 @@ private:
   uint8_t vibDelay_ = 0;
   bool gate_ = false;
   bool dirty_ = false;
+
+  SidVoice sv_[4];
+  SidState sidState_ = kIdle;
+  float sidEnv_ = 0.f;
+  float sidAttackInc_ = 0.f;
+  float sidDecayCoef_ = 1.f;
+  float sidRelCoef_ = 0.f;
+  float sidHist_[32] = {};
+  float sidFir_[31] = {};
+  int sidHistPos_ = 0;
+  float sidF_ = 0.f;
+  float sidQ_ = 1.f;
+  float sidLow_ = 0.f;
+  float sidBand_ = 0.f;
+  float pwPhase_ = 0.f;
+  bool sidBypass_ = true;
 };
 
 } // namespace chiptune

@@ -40,10 +40,11 @@ public:
       p_.duty = static_cast<uint8_t>(value >> 8); // 0..1023 -> 0..3
       break;
     case DETN:
-      p_.detune = static_cast<float>(value) * (16.f / 1023.f);
+      p_.detune = static_cast<float>(value) * (16.f / 1023.f); // register steps (non-SID)
+      p_.cutoff = static_cast<float>(value) * (1.f / 1023.f);  // filter closure (SID)
       break;
     case CHIP:
-      p_.chip = value ? chiptune::kChipGB : chiptune::kChipNES;
+      p_.chip = static_cast<chiptune::Chip>(value < 0 ? 0 : (value > 4 ? 4 : value));
       break;
     case ARP:
       p_.arp = static_cast<uint8_t>(value);
@@ -58,7 +59,8 @@ public:
       p_.decay = static_cast<uint8_t>(value);
       break;
     case QUANT:
-      p_.quantize = value != 0;
+      p_.quantize = value != 0; // period-register quantise (non-SID)
+      p_.resonant = value != 0; // filter resonance (SID)
       break;
     case INTVL:
       p_.interval = static_cast<uint8_t>(value);
@@ -74,18 +76,18 @@ public:
 
   const char *getParameterStrValue(uint8_t index, int32_t value) const override final
   {
-    static const char *const chip[] = {"NES", "GB"};
+    static const char *const chip[] = {"NES", "GB", "SEGA", "ATARI", "SID"};
     static const char *const arp[] = {"OFF", "MAJ", "MIN", "OCT", "5TH", "SUS4"};
-    static const char *const sub[] = {"OFF", "-1OCT", "UNI"};
+    static const char *const sub[] = {"OFF", "-1OCT", "UNI", "BZSAW", "BZTRI"};
     static const char *const noise[] = {"OFF", "LOW", "MID", "HIGH", "METAL", "BUZZ"};
     static const char *const quant[] = {"OFF", "ON"};
     static const char *const intvl[] = {"UNI", "MIN3", "MAJ3", "4TH", "5TH", "OCT"};
 
     switch (index)
     {
-    case CHIP:  return value >= 0 && value <= 1 ? chip[value] : nullptr;
+    case CHIP:  return value >= 0 && value <= 4 ? chip[value] : nullptr;
     case ARP:   return value >= 0 && value <= 5 ? arp[value] : nullptr;
-    case SUB:   return value >= 0 && value <= 2 ? sub[value] : nullptr;
+    case SUB:   return value >= 0 && value <= 4 ? sub[value] : nullptr;
     case NOISE: return value >= 0 && value <= 5 ? noise[value] : nullptr;
     case QUANT: return value >= 0 && value <= 1 ? quant[value] : nullptr;
     case INTVL: return value >= 0 && value <= 5 ? intvl[value] : nullptr;

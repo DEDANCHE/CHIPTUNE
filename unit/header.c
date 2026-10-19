@@ -21,13 +21,13 @@ const __unit_header unit_header_t unit_header = {
 
         // A knob: pulse duty zone (12.5 / 25 / 50 / 75 %); on GB also picks the wave table
         {0, 1023, 0, 512, k_unit_param_type_none, 0, 0, 0, {"DUTY"}},
-        // B knob: pulse 2 detune in period-register steps (0..16)
-        {0, 1023, 0, 0, k_unit_param_type_none, 0, 0, 0, {"DETN"}},
+        // B knob: pulse 2 detune in period-register steps (0..16); on SID the filter cutoff (open..closed)
+        {0, 1023, 0, 0, k_unit_param_type_none, 0, 0, 0, {"DETN/FLT"}},
 
         // Edit menu
-        {0, 1, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"CHIP"}},
+        {0, 4, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"CHIP"}},
         {0, 5, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"ARP"}},
-        {0, 2, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"SUB"}},
+        {0, 4, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"SUB"}},
         {0, 5, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"NOISE"}},
         {0, 15, 0, 0, k_unit_param_type_none, 0, 0, 0, {"DECAY"}},
         {0, 1, 0, 1, k_unit_param_type_strings, 0, 0, 0, {"QUANT"}},
