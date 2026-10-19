@@ -29,6 +29,8 @@ build/host_render build      # prints checks, writes WAVs into build/
 
 ## Building the unit
 
+A prebuilt `dist/chipapu.nts1mkiiunit` (built from this source, not yet tested on hardware) is included; load it with the Korg Kontrol Editor.
+
 Windows shortcut (logue-sdk checkout + arm-none-eabi-gcc + GNU make + Git for Windows):
 
 ```
