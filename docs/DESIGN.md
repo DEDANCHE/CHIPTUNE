@@ -92,7 +92,7 @@ The 8-bit noise and combined waveforms are approximations rather than the real D
 - VRC6 pulse alias **-63 dB**; 5B pitch 76x over the neighbouring bin. SID sync, ring, PCE FM and POKEY HPF each differ audibly from the plain voicing and release to silence.
 - Fuzz (12 chip values incl. 2 out of range, extreme frequencies, wild parameters, SHAPE_LFO ±1): output stays finite within +-1 (peak 0.98 after the make-up gain).
 - Note-off returns to silence on all chips (SID after its release tail).
-- Level: the chips mix at hardware-relative levels, which left the NES / GB / PCE voicings near -23 dBFS RMS. A per-chip make-up gain (+3 to +12 dB) and a soft-knee limiter (knee 0.75) now put a plain voicing at about -9 to -13 dBFS RMS (the new N163 / FDS / PAULA chips vary with the wave: about -7 to -20 dBFS), with attack peaks of -6 to -2 dBFS on a single note; presets peak at 0.44 to 0.97.
+- Level: the chips mix at hardware-relative levels, which left the NES / GB / PCE voicings near -23 dBFS RMS. A per-chip make-up gain (+3 to +12 dB) and a soft-knee limiter (knee 0.75) now put a plain voicing at about -8.5 to -11 dBFS RMS on every chip (average over the four waves at 110, 440 and 1760 Hz; N163 / PAULA vary with the wave: about -6 to -17 dBFS), with attack peaks of -6 to -2 dBFS on a single note; presets peak at 0.63 to 0.97. SID and VRC6 were raised by 3 dB and PCE / N163 / FDS / PAULA by 1 to 3 dB in the engine review so no chip sits more than about 2.5 dB from the rest.
 
 ## Modulation and presets
 
