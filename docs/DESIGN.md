@@ -106,7 +106,7 @@ The 8-bit noise and combined waveforms are approximations rather than the real D
 | SID extras | polyBLEP at the sync discontinuity, real DAC/combined waveform tables |
 ## Open questions / next steps
 
-1. ~~Build with the SDK~~ Done with `tools/build_unit.ps1` (gcc 14.2.1): text 25.3 KB, data 1.0 KB, bss 5.3 KB, all well under 48 KB. Still to do: build with the SDK Docker image (gcc 10.3) and load on hardware.
+1. ~~Build with the SDK~~ Done with `tools/build_unit.ps1` (gcc 14.2.1): text 27.0 KB, data 1.1 KB, bss 5.4 KB, all well under 48 KB. Still to do: build with the SDK Docker image (gcc 10.3) and load on hardware.
 2. Measure CPU on hardware; worst case is the high-pitched noise/pulse event rate. Candidates: smaller kernel (8 taps), fewer phases.
 3. Verify whether static constructors run in loaded units; glue uses lazy init to be safe.
 4. Verify the assumed ranges: pitch bend is treated as 14-bit centred on 8192 (±2 semitones), `SHAPE_LFO` as −1..1. Audio inputs are ignored; all ten parameter slots are used, so there is no switch for them.

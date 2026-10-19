@@ -14,9 +14,9 @@ Exploration of a chiptune oscillator unit for the **Korg NTS-1 digital kit mkII*
 | Piece | State |
 |-------|-------|
 | APU core | Compiles clean with `-Wall -Wextra -std=c++11`; host checks pass for all ten chips (pitch, alias level, filter, release, sync / ring / FM / high-pass voicings, presets, fuzz) |
-| Unit glue | **Builds with the logue SDK `nts-1_mkii` makefiles** (arm-none-eabi-gcc 14.2.1, no warnings) into a 27 KB `.nts1mkiiunit`; not yet run on hardware |
+| Unit glue | **Builds with the logue SDK `nts-1_mkii` makefiles** (arm-none-eabi-gcc 14.2.1, no warnings) into a 29 KB `.nts1mkiiunit`; not yet run on hardware |
 | SHAPE_LFO / pitch bend | Implemented; ranges assumed (bend 14-bit centred 8192, ±2 semitones). Audio input not used: all 10 parameter slots are taken |
-| Size / RAM | Measured from the ELF: text 25.3 KB, data 1.0 KB, bss 5.3 KB (limits 48 KB each). CPU on Cortex-M7 not measured |
+| Size / RAM | Measured from the ELF: text 27.0 KB, data 1.1 KB, bss 5.4 KB (limits 48 KB each). CPU on Cortex-M7 not measured |
 
 ## Host test
 
