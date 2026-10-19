@@ -52,7 +52,7 @@ public:
       p_.cutoff = static_cast<float>(value) * (1.f / 1023.f);  // filter closure (SID)
       break;
     case CHIP:
-      p_.chip = static_cast<chiptune::Chip>(value < 0 ? 0 : (value > 9 ? 9 : value));
+      p_.chip = static_cast<chiptune::Chip>(value < 0 ? 0 : (value > 12 ? 12 : value));
       break;
     case ARP:
       p_.arp = static_cast<uint8_t>(value);
@@ -84,12 +84,13 @@ public:
 
   const char *getParameterStrValue(uint8_t index, int32_t value) const override final
   {
-    static const char *const chip[] = {"NES", "GB", "SEGA", "ATARI", "SID", "PCE", "POKEY", "VRC6", "5B", "TIA"};
+    static const char *const chip[] = {"NES", "GB", "SEGA", "ATARI", "SID", "PCE", "POKEY", "VRC6", "5B", "TIA", "N163", "FDS", "PAULA"};
     static const char *const arp[] = {"OFF", "MAJ", "MIN", "OCT", "5TH", "SUS4"};
     static const char *const subAy[] = {"OFF", "-1OCT", "UNI", "BZSAW", "BZTRI"};
     static const char *const subSid[] = {"OFF", "-1OCT", "UNI", "SYNC", "RING"};
     static const char *const subPce[] = {"OFF", "-1OCT", "UNI", "FM", "UNI"};
     static const char *const subPokey[] = {"OFF", "-1OCT", "UNI", "HPF", "UNI"};
+    static const char *const subPaula[] = {"OFF", "-1OCT", "UNI", "FM", "AM"};
     static const char *const subOther[] = {"OFF", "-1OCT", "UNI", "UNI", "UNI"};
     static const char *const noise[] = {"OFF", "LOW", "MID", "HIGH", "METAL", "BUZZ"};
     static const char *const quant[] = {"OFF", "ON"};
@@ -102,6 +103,7 @@ public:
     case chiptune::kChipS5B:    sub = subAy; break;
     case chiptune::kChipSID:    sub = subSid; break;
     case chiptune::kChipPCE:    sub = subPce; break;
+    case chiptune::kChipPaula:  sub = subPaula; break;
     case chiptune::kChipPOKEY:  sub = subPokey; break;
     default: break;
     }
@@ -109,7 +111,7 @@ public:
     switch (index)
     {
     case PRESET: return value >= 0 && value < chiptune::kNumPresets ? chiptune::presetName(value) : nullptr;
-    case CHIP:  return value >= 0 && value <= 9 ? chip[value] : nullptr;
+    case CHIP:  return value >= 0 && value <= 12 ? chip[value] : nullptr;
     case ARP:   return value >= 0 && value <= 5 ? arp[value] : nullptr;
     case SUB:   return value >= 0 && value <= 4 ? sub[value] : nullptr;
     case NOISE: return value >= 0 && value <= 5 ? noise[value] : nullptr;

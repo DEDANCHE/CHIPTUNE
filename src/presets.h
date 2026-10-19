@@ -7,7 +7,7 @@
 
 namespace chiptune {
 
-constexpr int kNumPresets = 33;
+constexpr int kNumPresets = 45;
 
 inline const char *presetName(int index) {
   static const char *const names[kNumPresets] = {
@@ -17,7 +17,9 @@ inline const char *presetName(int index) {
       "NES CHORUS", "NES SNARE",  "NES MINOR",  "GB SUB BASS", "GB HIHAT",
       "SEGA LEAD",  "SEGA SNARE", "ATARI LEAD", "ATARI TRI",   "C64 BASS",
       "C64 NOISE",  "C64 ARP",    "PCE ORGAN",  "POKEY LEAD",  "POKEY NOISE",
-      "VRC6 ARP",   "5B LEAD",    "TIA PERC"};
+      "VRC6 ARP",   "5B LEAD",    "TIA PERC",   "N163 BELL",   "N163 SAW",
+      "N163 ORGAN", "N163 BUZZ",  "FDS BELL",   "FDS BASS",    "FDS SAW",
+      "FDS WOBBLE", "AMIGA SAW",  "AMIGA PWM",  "AMIGA FM",    "AMIGA AM"};
   return names[index < 0 ? 0 : (index >= kNumPresets ? kNumPresets - 1 : index)];
 }
 
@@ -120,8 +122,44 @@ inline ApuParams preset(int index) {
   case 31: // 5B LEAD: squares with unison sub and vibrato
     p.chip = kChipS5B; p.sub = 2; p.detune = 2.f; p.vibrato = 4;
     break;
-  default: // TIA PERC: 9-bit poly noise burst
+  case 32: // TIA PERC: 9-bit poly noise burst
     p.chip = kChipTIA; p.duty = 3; p.decay = 4;
+    break;
+  case 33: // N163 BELL: 4-bit sine plus third harmonic, fifth above
+    p.chip = kChipN163; p.duty = 0; p.interval = 4; p.detune = 2.f;
+    break;
+  case 34: // N163 SAW: 16-step saw with vibrato
+    p.chip = kChipN163; p.duty = 1; p.vibrato = 5;
+    break;
+  case 35: // N163 ORGAN: additive organ, octave layer
+    p.chip = kChipN163; p.duty = 2; p.sub = 1;
+    break;
+  case 36: // N163 BUZZ: rough pulse-sine blend, detuned
+    p.chip = kChipN163; p.duty = 3; p.detune = 3.f;
+    break;
+  case 37: // FDS BELL: sine carrier, 5th-harmonic wave, light FM
+    p.chip = kChipFDS; p.duty = 2; p.interval = 5; p.detune = 4.f;
+    break;
+  case 38: // FDS BASS: sine carrier with deep FM, octave down
+    p.chip = kChipFDS; p.duty = 0; p.interval = 0; p.detune = 10.f; p.sub = 1;
+    break;
+  case 39: // FDS SAW: 6-bit saw with arpeggio
+    p.chip = kChipFDS; p.duty = 1; p.arp = 1;
+    break;
+  case 40: // FDS WOBBLE: triangle carrier, slow-ish heavy FM
+    p.chip = kChipFDS; p.duty = 3; p.interval = 2; p.detune = 12.f; p.vibrato = 4;
+    break;
+  case 41: // AMIGA SAW: 8-bit saw, unison sub
+    p.chip = kChipPaula; p.duty = 0; p.sub = 2; p.detune = 2.f;
+    break;
+  case 42: // AMIGA PWM: 25 % pulse sample, octave down
+    p.chip = kChipPaula; p.duty = 1; p.sub = 1;
+    break;
+  case 43: // AMIGA FM: organ sample frequency-modulated by voice 2
+    p.chip = kChipPaula; p.duty = 2; p.sub = 3; p.interval = 4; p.detune = 8.f;
+    break;
+  default: // AMIGA AM: saw-plus-octave sample amplitude-modulated (Paula channel modulation)
+    p.chip = kChipPaula; p.duty = 3; p.sub = 4; p.interval = 5;
     break;
   }
   return p;

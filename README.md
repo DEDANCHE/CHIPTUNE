@@ -4,8 +4,8 @@ Exploration of a chiptune oscillator unit for the **Korg NTS-1 digital kit mkII*
 (logue SDK) built on an APU-style engine instead of a classic wavetable/PolyBLEP oscillator.
 
 - Design notes, engine comparison and open questions: [docs/DESIGN.md](docs/DESIGN.md)
-- `src/apu_core.h` – portable, header-only APU core (NES, Game Boy, Sega SN76489, Atari ST YM2149, C64 SID, PC Engine HuC6280, Atari POKEY, Konami VRC6, Sunsoft 5B and Atari 2600 TIA models)
-- `src/presets.h` / [docs/PRESETS.md](docs/PRESETS.md) – 33 presets, selected with knob A
+- `src/apu_core.h` – portable, header-only APU core (NES, Game Boy, Sega SN76489, Atari ST YM2149, C64 SID, PC Engine HuC6280, Atari POKEY, Konami VRC6, Sunsoft 5B, Atari 2600 TIA, Namco N163, Famicom Disk System and Amiga Paula models)
+- `src/presets.h` / [docs/PRESETS.md](docs/PRESETS.md) – 45 presets, selected with knob A
 - `unit/` – NTS-1 mkII unit glue (`header.c`, `osc.h`), written against the SDK `dummy-osc` template
 - `test/host_render.cpp` – host test + WAV renderer
 
@@ -13,10 +13,10 @@ Exploration of a chiptune oscillator unit for the **Korg NTS-1 digital kit mkII*
 
 | Piece | State |
 |-------|-------|
-| APU core | Compiles clean with `-Wall -Wextra -std=c++11`; host checks pass for all ten chips (pitch, alias level, filter, release, sync / ring / FM / high-pass voicings, presets, fuzz) |
-| Unit glue | **Builds with the logue SDK `nts-1_mkii` makefiles** (arm-none-eabi-gcc 14.2.1, no warnings) into a 29 KB `.nts1mkiiunit`; not yet run on hardware |
+| APU core | Compiles clean with `-Wall -Wextra -std=c++11`; host checks pass for all thirteen chips (pitch, alias level, filter, release, sync / ring / FM / high-pass voicings, presets, fuzz) |
+| Unit glue | **Builds with the logue SDK `nts-1_mkii` makefiles** (arm-none-eabi-gcc 14.2.1, no warnings) into a 32 KB `.nts1mkiiunit`; not yet run on hardware |
 | SHAPE_LFO / pitch bend | Implemented; ranges assumed (bend 14-bit centred 8192, ±2 semitones). Audio input not used: all 10 parameter slots are taken |
-| Size / RAM | Measured from the ELF: text 27.0 KB, data 1.1 KB, bss 5.4 KB (limits 48 KB each). CPU on Cortex-M7 not measured |
+| Size / RAM | Measured from the ELF: text 29.7 KB, data 1.3 KB, bss 5.8 KB (limits 48 KB each). CPU on Cortex-M7 not measured; on a host PC the FDS voice at 3.5 kHz costs about 3x a NES voice, so it is the heaviest case |
 
 ## Host test
 
