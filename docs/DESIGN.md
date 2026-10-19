@@ -94,7 +94,7 @@ The 8-bit noise and combined waveforms are approximations rather than the real D
 
 - `SHAPE_LFO`: SID filter cutoff += 0.5 × LFO; on event chips it modulates pulse 2 detune by up to ±8 register steps.
 - Pitch bend: ±2 semitones, applied in `process`.
-- `src/presets.h` holds 15 reference presets (`chiptune::preset(i)`); the unit API has no preset slot, so [docs/PRESETS.md](PRESETS.md) lists the values to dial in.
+- `src/presets.h` holds 33 reference presets (`chiptune::preset(i)`); the unit API has no preset slot, so [docs/PRESETS.md](PRESETS.md) lists the values to dial in.
 
 ## Other APUs to add later (same primitives)
 

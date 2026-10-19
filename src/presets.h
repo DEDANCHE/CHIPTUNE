@@ -7,13 +7,17 @@
 
 namespace chiptune {
 
-constexpr int kNumPresets = 15;
+constexpr int kNumPresets = 33;
 
 inline const char *presetName(int index) {
   static const char *const names[kNumPresets] = {
       "NES LEAD",   "NES ARP",    "NES BASS",   "GB WAVE",     "SEGA BUZZ",
       "ATARI BUZZ", "C64 PWM",    "C64 SYNC",   "C64 RING",    "PCE FM",
-      "POKEY BASS", "POKEY HPF",  "VRC6 LEAD",  "5B BUZZ",     "TIA BASS"};
+      "POKEY BASS", "POKEY HPF",  "VRC6 LEAD",  "5B BUZZ",     "TIA BASS",
+      "NES CHORUS", "NES SNARE",  "NES MINOR",  "GB SUB BASS", "GB HIHAT",
+      "SEGA LEAD",  "SEGA SNARE", "ATARI LEAD", "ATARI TRI",   "C64 BASS",
+      "C64 NOISE",  "C64 ARP",    "PCE ORGAN",  "POKEY LEAD",  "POKEY NOISE",
+      "VRC6 ARP",   "5B LEAD",    "TIA PERC"};
   return names[index < 0 ? 0 : (index >= kNumPresets ? kNumPresets - 1 : index)];
 }
 
@@ -62,8 +66,62 @@ inline ApuParams preset(int index) {
   case 13: // 5B BUZZ: Gimmick-style envelope buzz
     p.chip = kChipS5B; p.sub = 4; p.noise = 1; p.decay = 4;
     break;
-  default: // TIA BASS: 4-bit poly, coarse tuning
+  case 14: // TIA BASS: 4-bit poly, coarse tuning
     p.chip = kChipTIA; p.duty = 1; p.sub = 1;
+    break;
+  case 15: // NES CHORUS: two pulses detuned for phase beating
+    p.chip = kChipNES; p.duty = 2; p.detune = 4.f;
+    break;
+  case 16: // NES SNARE: pulse with a fast-decaying high noise
+    p.chip = kChipNES; p.duty = 2; p.noise = 3; p.decay = 2;
+    break;
+  case 17: // NES MINOR: minor arpeggio, 12.5 % pulse
+    p.chip = kChipNES; p.duty = 0; p.arp = 2;
+    break;
+  case 18: // GB SUB BASS: sine wave table an octave down
+    p.chip = kChipGB; p.duty = 0; p.sub = 1;
+    break;
+  case 19: // GB HIHAT: short mid noise burst
+    p.chip = kChipGB; p.duty = 3; p.noise = 2; p.decay = 6;
+    break;
+  case 20: // SEGA LEAD: square with a fifth above and vibrato
+    p.chip = kChipPSG; p.interval = 4; p.vibrato = 4; p.detune = 2.f;
+    break;
+  case 21: // SEGA SNARE: white noise burst
+    p.chip = kChipPSG; p.noise = 3; p.decay = 3;
+    break;
+  case 22: // ATARI LEAD: detuned squares, unison sub
+    p.chip = kChipAY; p.sub = 2; p.detune = 3.f; p.vibrato = 4;
+    break;
+  case 23: // ATARI TRI: triangle envelope buzzer
+    p.chip = kChipAY; p.sub = 4;
+    break;
+  case 24: // C64 BASS: resonant saw, low cutoff
+    p.chip = kChipSID; p.duty = 1; p.sub = 1; p.cutoff = 0.5f; p.resonant = true;
+    break;
+  case 25: // C64 NOISE: filtered noise hit
+    p.chip = kChipSID; p.duty = 2; p.noise = 2; p.decay = 6; p.cutoff = 0.3f;
+    break;
+  case 26: // C64 ARP: pulse arpeggio, gentle filter
+    p.chip = kChipSID; p.duty = 2; p.arp = 1; p.sub = 2; p.cutoff = 0.2f;
+    break;
+  case 27: // PCE ORGAN: sine wave table, octave above, slight detune
+    p.chip = kChipPCE; p.duty = 0; p.interval = 5; p.detune = 2.f;
+    break;
+  case 28: // POKEY LEAD: pure tone with vibrato
+    p.chip = kChipPOKEY; p.duty = 0; p.detune = 2.f; p.vibrato = 4;
+    break;
+  case 29: // POKEY NOISE: 17-bit poly noise burst
+    p.chip = kChipPOKEY; p.duty = 2; p.noise = 2; p.decay = 5;
+    break;
+  case 30: // VRC6 ARP: 25 % pulse arpeggio with saw layer
+    p.chip = kChipVRC6; p.duty = 1; p.arp = 1; p.sub = 1;
+    break;
+  case 31: // 5B LEAD: squares with unison sub and vibrato
+    p.chip = kChipS5B; p.sub = 2; p.detune = 2.f; p.vibrato = 4;
+    break;
+  default: // TIA PERC: 9-bit poly noise burst
+    p.chip = kChipTIA; p.duty = 3; p.decay = 4;
     break;
   }
   return p;
