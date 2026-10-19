@@ -25,7 +25,7 @@ const __unit_header unit_header_t unit_header = {
         {0, 1023, 0, 0, k_unit_param_type_none, 0, 0, 0, {"DETN/FLT"}},
 
         // Edit menu
-        {0, 6, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"CHIP"}},
+        {0, 9, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"CHIP"}},
         {0, 5, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"ARP"}},
         {0, 4, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"SUB"}},
         {0, 5, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"NOISE"}},

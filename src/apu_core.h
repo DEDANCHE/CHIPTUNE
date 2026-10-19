@@ -1,6 +1,6 @@
 #pragma once
 // Chiptune APU core. Two engines share one voice front-end (note, arp, vibrato):
-//   * event engine  (NES, GB, SN76489, YM2149, HuC6280, POKEY): channels run in the chip clock
+//   * event engine  (NES, GB, SN76489, YM2149, HuC6280, POKEY, VRC6, 5B, TIA): channels run in the chip clock
 //     domain; each output change is a band-limited step (blip-style).
 //   * analog engine (SID): per-sample phase accumulators with polyBLEP,
 //     ADSR and a state-variable low-pass.
@@ -31,18 +31,28 @@ constexpr int8_t kIntervals[kNumIntervals] = {0, 3, 4, 5, 7, 12};
 constexpr int8_t kArp[6][3] = {{0, 0, 0}, {0, 4, 7}, {0, 3, 7}, {0, 12, 0}, {0, 7, 12}, {0, 5, 7}};
 constexpr uint8_t kArpLen[6] = {1, 3, 3, 2, 3, 3};
 // NOISE setting (off, low, mid, high, metal, buzz) -> noise table index, per chip
-constexpr uint8_t kNoiseIdx[7][6] = {{0, 11, 7, 3, 4, 11},  // NES
+constexpr uint8_t kNoiseIdx[10][6] = {{0, 11, 7, 3, 4, 11},  // NES
                                      {0, 11, 7, 3, 4, 11},  // GB
                                      {0, 2, 1, 0, 0, 0},    // SN76489
                                      {0, 13, 9, 4, 1, 13},  // YM2149
                                      {0, 0, 0, 0, 0, 0},    // SID (unused)
                                      {0, 0, 1, 3, 5, 0},    // HuC6280
-                                     {0, 6, 4, 2, 0, 7}};   // POKEY
+                                     {0, 6, 4, 2, 0, 7},    // POKEY
+                                     {0, 0, 0, 0, 0, 0},    // VRC6 (no noise channel)
+                                     {0, 13, 9, 4, 1, 13},  // Sunsoft 5B
+                                     {0, 13, 8, 3, 0, 15}}; // TIA
 // HuC6280 noise: 64 * (32 - n) chip clocks per LFSR step
 constexpr float kPceNoise[16] = {2048, 1024, 512, 256, 128, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64};
 // POKEY noise divider: (N + 1) * 28 chip clocks (64 kHz base clock)
 constexpr float kPokeyNoise[16] = {56,  112,  224,  448,  896,  1792, 3584, 5600,
                                    5600, 5600, 5600, 5600, 5600, 5600, 5600, 5600};
+// TIA noise divider: N * 114 chip clocks (31.4 kHz base clock)
+constexpr float kTiaNoise[16] = {114,  228,  342,  456,  570,  684,  798,  912,
+                                 1140, 1368, 1710, 2052, 2394, 2736, 3192, 3648};
+// TIA DUTY -> poly mode used by pokeyStep: pure, 4-bit, 5-bit, 9-bit noise
+constexpr uint8_t kTiaMode[4] = {0, 1, 2, 4};
+// VRC6 pulse: high steps out of 16 for the four DUTY zones
+constexpr uint8_t kVrc6Duty[4] = {2, 4, 8, 12};
 // POKEY distortion mode (DUTY) -> divider fires per audible cycle
 constexpr float kPokeySteps[5] = {2.f, 15.f, 31.f, 31.f, 2.f};
 constexpr float kSidNoiseHz[6] = {0.f, 150.f, 800.f, 3500.f, 9000.f, 40.f};
@@ -117,7 +127,10 @@ enum Chip : uint8_t {
   kChipSID = 4, // Commodore 64 SID
   kChipPCE = 5,   // PC Engine HuC6280
   kChipPOKEY = 6, // Atari 8-bit POKEY
-  kNumChips = 7
+  kChipVRC6 = 7,  // Konami VRC6: 2 pulses with 16-step duty + saw
+  kChipS5B = 8,   // Sunsoft 5B (YM2149 core at 1.79 MHz)
+  kChipTIA = 9,   // Atari 2600 TIA: 5-bit dividers, poly-counter waveforms
+  kNumChips = 10
 };
 
 struct ApuParams {
@@ -125,8 +138,10 @@ struct ApuParams {
   uint8_t duty = 2;      // 0..3. NES/GB: pulse duty 12.5/25/50/75 %, GB: wave table.
                          //       SID: waveform tri / saw / pulse(PWM) / saw&pulse.
                          //       PCE: wave table. POKEY: pure / 4-bit / 5-bit / 5&4-bit poly.
+                         //       TIA: pure / 4-bit / 5-bit / 9-bit noise. VRC6: pulse duty.
   uint8_t arp = 0;       // 0 off, 1 maj, 2 min, 3 oct, 4 5th+oct, 5 sus4
-  uint8_t sub = 0;       // 0 off, 1 -12 st, 2 unison, 3/4 YM2149 envelope buzz (saw/tri)
+  uint8_t sub = 0;       // 0 off, 1 -12 st, 2 unison. 3/4: YM2149/5B envelope buzz (saw/tri),
+                         //   SID 3 = hard sync, 4 = ring mod, PCE 3+ = LFO FM, POKEY 3+ = high-pass
   uint8_t noise = 0;     // 0 off, 1 low, 2 mid, 3 high, 4 metal, 5 buzz
   uint8_t decay = 0;     // 0 hold, 1..15 decay speed
   uint8_t interval = 0;  // voice 2 interval index, see detail::kIntervals
@@ -150,6 +165,10 @@ public:
     vibPhase_ = vibValue_ = 0.f;
     envTicks_ = arpTick_ = arpStep_ = vibDelay_ = 0;
     gate_ = false;
+    hpLatch_ = false;
+    shapeMod_ = 0.f;
+    sidInc2_ = 0;
+    p1Base_ = 1.0e9f;
     for (int i = 0; i < 4; ++i) sv_[i] = SidVoice();
     sidState_ = kIdle;
     sidEnv_ = sidLow_ = sidBand_ = pwPhase_ = 0.f;
@@ -176,6 +195,14 @@ public:
     freq_ = !(hz >= 8.f) ? 8.f : (hz > hi ? hi : hz); // also maps NaN to 8 Hz
   }
 
+  // Shape LFO / external modulation, -1..1: SID filter cutoff, register detune elsewhere.
+  void setShapeMod(float m) {
+    const float c = !(m >= -1.f) ? -1.f : (m > 1.f ? 1.f : m);
+    if (c == shapeMod_) return;
+    shapeMod_ = c;
+    if (p_.chip == kChipSID) updateSidCoefs();
+  }
+
   void noteOn(uint8_t velocity) {
     const bool wasIdle = sidState_ == kIdle;
     gate_ = true;
@@ -187,7 +214,9 @@ public:
     vibValue_ = 0.f;
     vibDelay_ = 48;
     p1_ = p2_ = sub_ = noise_ = env_ = Chan();
-    noise_.lfsr = p_.chip == kChipPSG ? 0x8000u : (p_.chip == kChipPOKEY ? 0x1FFFFu : 1u);
+    noise_.lfsr = p_.chip == kChipPSG ? 0x8000u
+                : (p_.chip == kChipPOKEY ? 0x1FFFFu : (p_.chip == kChipTIA ? 0x1FFu : 1u));
+    hpLatch_ = false;
     env_.level = 15;
     applyOn();
     updatePeriods();
@@ -196,6 +225,7 @@ public:
     sub_.timer = sub_.period;
     noise_.timer = noise_.period;
     env_.timer = env_.period;
+    if (hpMode()) sub_.timer = sub_.period * 1.5f; // sample ch1 half a period after its edges
     if (wasIdle) {
       for (int i = 0; i < 4; ++i) sv_[i] = SidVoice();
       updatePeriods();
@@ -225,14 +255,18 @@ public:
 
     const bool sq = squareChip();
     const bool pce = p_.chip == kChipPCE;
-    const bool pokey = p_.chip == kChipPOKEY;
-    const Kind k12 = pce ? Kind::kWave : (pokey ? Kind::kPokey : Kind::kPulse);
-    const Kind ks = pokey ? Kind::kPokey : (sq ? Kind::kPulse : Kind::kWave);
+    const bool vrc6 = p_.chip == kChipVRC6;
+    const bool pokey = pokeyLike();
+    const Kind k12 = pce ? Kind::kWave : (vrc6 ? Kind::kPulse16 : (pokey ? Kind::kPokey : Kind::kPulse));
+    const Kind ks = pokey ? Kind::kPokey : (vrc6 ? Kind::kSaw : (sq ? Kind::kPulse : Kind::kWave));
     const Kind kn = pokey ? Kind::kPokey : Kind::kNoise;
-    const uint8_t d1 = sq ? 2 : p_.duty;
-    const uint8_t d2 = pokey ? p_.duty : (sq ? 2 : static_cast<uint8_t>((p_.duty + 1) & 3));
+    const uint8_t pm = pokey ? pokeyMode() : 0;
+    const uint8_t d1 = pokey ? pm : (sq ? 2 : p_.duty);
+    const uint8_t d2 = pokey ? pm : (sq ? 2 : static_cast<uint8_t>((p_.duty + 1) & 3));
     const uint8_t ds = pce ? p_.duty : (pokey ? 0 : 2);
     const uint8_t dn = pokey ? 4 : 0;
+    const bool lfo = pceLfo();
+    const bool hp = hpMode();
     float remaining = cps_;
     for (;;) {
       float dt = remaining;
@@ -245,8 +279,17 @@ public:
 
       bool fired = false;
       if (p1_.on) fired |= tick(p1_, dt, k12, d1);
-      if (p2_.on) fired |= tick(p2_, dt, k12, d2);
-      if (sub_.on) fired |= tick(sub_, dt, ks, ds);
+      if (p2_.on) {
+        const bool f2 = tick(p2_, dt, k12, d2);
+        if (f2 && lfo) // HuC6280 LFO: channel 2 modulates channel 1 frequency
+          p1_.period = p1Base_ * (1.f + lfoDepth() * (static_cast<float>(p2_.level) - 15.5f) * (1.f / 15.5f));
+        fired |= f2;
+      }
+      if (sub_.on) {
+        const bool fs = tick(sub_, dt, ks, ds);
+        if (fs && hp) hpLatch_ = p1_.bit != 0; // POKEY high-pass: ch3 clock samples ch1
+        fired |= fs;
+      }
       if (noise_.on) fired |= tick(noise_, dt, kn, dn);
       if (env_.on) fired |= tick(env_, dt, Kind::kEnv, 0);
       if (fired) syncLevel((cps_ - remaining) / cps_);
@@ -266,7 +309,7 @@ public:
   }
 
 private:
-  enum class Kind { kPulse, kWave, kNoise, kEnv, kPokey };
+  enum class Kind { kPulse, kWave, kNoise, kEnv, kPokey, kPulse16, kSaw };
   enum SidState : uint8_t { kIdle, kAttack, kDecay, kSustain, kRelease };
 
   struct Chan {
@@ -312,16 +355,26 @@ private:
     p_.cutoff = p_.cutoff < 0.f ? 0.f : (p_.cutoff > 1.f ? 1.f : p_.cutoff);
   }
 
-  bool squareChip() const { return p_.chip == kChipPSG || p_.chip == kChipAY; }
-  bool buzz() const { return p_.chip == kChipAY && p_.sub >= 3; }
+  bool ayLike() const { return p_.chip == kChipAY || p_.chip == kChipS5B; }
+  bool squareChip() const { return p_.chip == kChipPSG || ayLike(); }
+  bool buzz() const { return ayLike() && p_.sub >= 3; }
+  bool pokeyLike() const { return p_.chip == kChipPOKEY || p_.chip == kChipTIA; }
+  uint8_t pokeyMode() const { return p_.chip == kChipTIA ? detail::kTiaMode[p_.duty] : p_.duty; }
+  bool hpMode() const { return p_.chip == kChipPOKEY && p_.sub >= 3; }
+  bool pceLfo() const { return p_.chip == kChipPCE && p_.sub >= 3; }
+  float detuneEff() const { return p_.detune + shapeMod_ * 8.f; }
+  float lfoDepth() const {
+    const float d = detuneEff() * (1.f / 16.f);
+    return 0.1f + 0.6f * (d < 0.f ? 0.f : (d > 1.f ? 1.f : d));
+  }
 
   void applyOn() {
     const bool g = gate_;
     const bool b = buzz();
     p1_.on = g && !b;
     p2_.on = g;
-    sub_.on = g && p_.sub != 0 && !b;
-    noise_.on = g && p_.noise != 0;
+    sub_.on = g && p_.sub != 0 && !b && !pceLfo();
+    noise_.on = g && p_.noise != 0 && p_.chip != kChipVRC6;
     env_.on = g && b;
   }
 
@@ -349,6 +402,14 @@ private:
     case Kind::kPokey:
       pokeyStep(c, arg);
       break;
+    case Kind::kPulse16:
+      c.seq = (c.seq + 1) & 15;
+      c.bit = c.seq < detail::kVrc6Duty[arg & 3];
+      break;
+    case Kind::kSaw: // VRC6 saw: 7 steps, accumulator rate 42, top 5 bits
+      c.seq = static_cast<uint8_t>((c.seq + 1) % 7);
+      c.level = static_cast<uint8_t>((c.seq * 42) >> 3);
+      break;
     case Kind::kEnv: {
       const bool tri = p_.sub == 4;
       c.seq = static_cast<uint8_t>((c.seq + 1) % (tri ? 32 : 16));
@@ -369,8 +430,13 @@ private:
     if (mode == 1 || mode == 3) {
       c.p4 = static_cast<uint8_t>(((c.p4 << 1) | (((c.p4 >> 3) ^ (c.p4 >> 2)) & 1)) & 0xF);
       c.bit = c.p4 & 1;
+    } else if (mode == 4 && p_.chip == kChipTIA) { // 9-bit poly
+      c.lfsr = ((c.lfsr << 1) | (((c.lfsr >> 8) ^ (c.lfsr >> 4)) & 1)) & 0x1FFu;
+      if (c.lfsr == 0) c.lfsr = 1;
+      c.bit = c.lfsr & 1;
     } else if (mode == 4) {
       c.lfsr = ((c.lfsr << 1) | (((c.lfsr >> 16) ^ (c.lfsr >> 11)) & 1)) & 0x1FFFFu;
+      if (c.lfsr == 0) c.lfsr = 1;
       c.bit = c.lfsr & 1;
     } else {
       c.bit ^= 1;
@@ -383,7 +449,7 @@ private:
       const uint32_t fb = shortMode ? (c.lfsr & 1) : ((c.lfsr ^ (c.lfsr >> 3)) & 1);
       c.lfsr = (c.lfsr >> 1) | (fb << 15);
       c.bit = c.lfsr & 1;
-    } else if (p_.chip == kChipAY) {
+    } else if (ayLike()) {
       const uint32_t fb = (c.lfsr ^ (c.lfsr >> 3)) & 1;
       c.lfsr = (c.lfsr >> 1) | (fb << 16);
       c.bit = c.lfsr & 1;
@@ -403,6 +469,9 @@ private:
     case kChipAY:  spec_ = {2000000.f, 2.f, 2.f, detail::kAyNoise, 0.2f, 4095.f}; break;
     case kChipPCE: spec_ = {3579545.f, 1.f, 1.f, detail::kPceNoise, 0.25f, 4095.f}; break;
     case kChipPOKEY: spec_ = {1789773.f, 1.f, 1.f, detail::kPokeyNoise, 0.2f, 65535.f}; break;
+    case kChipVRC6: spec_ = {1789773.f, 1.f, 2.f, detail::kAyNoise, 0.2f, 4095.f}; break;
+    case kChipS5B: spec_ = {1789773.f, 4.f, 4.f, detail::kAyNoise, 0.2f, 4095.f}; break;
+    case kChipTIA: spec_ = {3579545.f, 114.f, 114.f, detail::kTiaNoise, 0.2f, 32.f}; break;
     default:       spec_ = {sr_, 1.f, 1.f, detail::kNesNoise, 1.f, 2048.f}; break;
     }
     for (int v = 0; v < 16; ++v) {
@@ -410,7 +479,7 @@ private:
         amp_[v] = 0.f;
       else if (c == kChipPSG)
         amp_[v] = std::pow(10.f, -(15 - v) * 0.1f); // 2 dB per step
-      else if (c == kChipPOKEY)
+      else if (c == kChipPOKEY || c == kChipTIA)
         amp_[v] = static_cast<float>(v) * (1.f / 15.f); // linear 4-bit volume
       else
         amp_[v] = std::pow(2.f, -(15 - v) * 0.5f);  // 3 dB per step
@@ -482,6 +551,16 @@ private:
     return (n < 1.f ? 1.f : (n > 65535.f ? 65535.f : n)) + 7.f;
   }
 
+  // TIA: 5-bit divider (1..32) on the 31.4 kHz audio clock. Out-of-range registers
+  // fold up by octaves, so low notes keep their pitch class.
+  float tiaPeriod(float hz, float detuneRegs, float steps) const {
+    float r = spec_.clk / (steps * hz) / 114.f;
+    while (r > 32.f) r *= 0.5f;
+    if (p_.quantize) r = std::floor(r + 0.5f);
+    r += detuneRegs;
+    return (r < 1.f ? 1.f : (r > 32.f ? 32.f : r)) * 114.f;
+  }
+
   uint32_t sidInc(float hz) const {
     float v = hz / (2.f * sr_) * 16777216.f; // voices run at 2x and are decimated
     if (v > 8388607.f) v = 8388607.f;
@@ -498,24 +577,40 @@ private:
     if (p_.chip == kChipSID) {
       sv_[0].inc = sidInc(f1);
       sv_[1].inc = sidInc(f2 * 1.00406f); // fixed +7 cent spread
+      sidInc2_ = sv_[1].inc;
       sv_[2].inc = sidInc(fs);
       sv_[3].inc = sidInc(detail::kSidNoiseHz[p_.noise]);
       return;
     }
 
-    if (p_.chip == kChipPOKEY) {
-      const float st = detail::kPokeySteps[p_.duty];
-      p1_.period = pokeyPeriod(f1, 0.f, st);
-      p2_.period = pokeyPeriod(f2, p_.detune, st);
-      sub_.period = pokeyPeriod(fs, 0.f, 2.f); // the bass voice stays a pure tone
+    const float det = detuneEff();
+    if (pokeyLike()) {
+      const bool tia = p_.chip == kChipTIA;
+      const float st = detail::kPokeySteps[pokeyMode()];
+      auto per = [&](float hz, float d, float s) {
+        return tia ? tiaPeriod(hz, d, s) : pokeyPeriod(hz, d, s);
+      };
+      p1_.period = per(f1, 0.f, st);
+      p2_.period = per(f2, det, st);
+      // the bass voice stays a pure tone; in high-pass mode it is the sampling clock
+      sub_.period = hpMode() ? per(f1, det, st) : per(fs, 0.f, 2.f);
       noise_.period = spec_.noiseTable[detail::kNoiseIdx[p_.chip][p_.noise]];
+      p1Base_ = p1_.period;
       return;
     }
 
     const float rm = spec_.regMax;
+    if (p_.chip == kChipVRC6) {
+      p1_.period = stepFor(1.f, 16.f, f1, 0.f, rm);
+      p2_.period = stepFor(1.f, 16.f, f2, det, rm);
+      sub_.period = stepFor(2.f, 7.f, fs, 0.f, rm);
+      p1Base_ = p1_.period;
+      return;
+    }
     const float steps = p_.chip == kChipPCE ? 32.f : 8.f;
     p1_.period = stepFor(spec_.pulseUnit, steps, f1, 0.f, rm);
-    p2_.period = stepFor(spec_.pulseUnit, steps, f2, p_.detune, rm);
+    p2_.period = stepFor(spec_.pulseUnit, steps, f2, pceLfo() ? 0.f : det, rm);
+    p1Base_ = p1_.period;
     sub_.period = squareChip() ? stepFor(spec_.pulseUnit, 8.f, fs, 0.f, rm)
                                : stepFor(spec_.waveUnit, 32.f, fs, 0.f, rm);
     noise_.period = spec_.noiseTable[detail::kNoiseIdx[p_.chip][p_.noise]];
@@ -523,7 +618,7 @@ private:
       const float per = spec_.clk / (16.f * f1);
       noise_.period = per < 4.f ? 4.f : per;
     }
-    if (p_.chip == kChipAY)
+    if (ayLike())
       env_.period = stepFor(16.f, p_.sub == 4 ? 32.f : 16.f, f1, 0.f, 65535.f);
   }
 
@@ -572,17 +667,25 @@ private:
       return (a + b + w + n) / 60.f * spec_.mixGain;
     }
     case kChipPCE: {
-      float s = static_cast<float>(p1_.level + p2_.level);
+      float s = static_cast<float>(p1_.level);
+      if (!pceLfo()) s += static_cast<float>(p2_.level);
       if (sub_.on) s += static_cast<float>(sub_.level);
       if (noise_.on && noise_.bit) s += 31.f;
       return s * (1.f / 31.f) * amp_[v] * spec_.mixGain;
     }
-    default: { // PSG, AY, POKEY
+    case kChipVRC6: {
+      const float a = p1_.bit ? vol_ : 0.f;
+      const float b = p2_.bit ? vol_ : 0.f;
+      const float w = sub_.on ? static_cast<float>(sub_.level) * (vol_ * (1.f / 15.f)) : 0.f;
+      return (a + b + w) * (1.f / 61.f) * 0.8f;
+    }
+    default: { // PSG, AY, 5B, POKEY, TIA
       const float amp = amp_[v];
-      float a = p1_.bit ? amp : 0.f;
+      const bool b1 = hpMode() ? (p1_.bit != 0) != hpLatch_ : p1_.bit != 0;
+      float a = b1 ? amp : 0.f;
       if (buzz()) a = amp_[env_.level] * (vol_ * (1.f / 15.f));
       const float b = p2_.bit ? amp : 0.f;
-      const float c = (sub_.on && sub_.bit) ? amp : 0.f;
+      const float c = (sub_.on && sub_.bit && !hpMode()) ? amp : 0.f;
       const float n = (noise_.on && noise_.bit) ? amp : 0.f;
       return (a + b + c + n) * spec_.mixGain;
     }
@@ -616,18 +719,20 @@ private:
     sidAttackInc_ = 1.f / (0.002f * sr_);
     sidDecayCoef_ = p_.decay ? std::exp(-6.9f / (p_.decay * 0.0625f * sr_)) : 1.f;
     sidRelCoef_ = std::exp(-6.9f / (0.15f * sr_));
-    sidBypass_ = p_.cutoff < 0.01f;
-    const float fc = 9000.f * std::pow(0.00667f, p_.cutoff); // 9 kHz .. 60 Hz
+    float cut = p_.cutoff + 0.5f * shapeMod_;
+    cut = cut < 0.f ? 0.f : (cut > 1.f ? 1.f : cut);
+    sidBypass_ = cut < 0.01f;
+    const float fc = 9000.f * std::pow(0.00667f, cut); // 9 kHz .. 60 Hz
     sidF_ = 2.f * std::sin(pi * fc / sr_);
     sidQ_ = p_.resonant ? 0.3f : 1.f;
   }
 
-  float sidVoice(SidVoice &v, float pw) {
+  float sidVoice(SidVoice &v, float pw, uint8_t wave) {
     const float k = 1.f / 16777216.f;
     const float dt = static_cast<float>(v.inc) * k;
     v.acc = (v.acc + v.inc) & 0xFFFFFFu;
     const float p = static_cast<float>(v.acc) * k;
-    switch (p_.duty) {
+    switch (wave) {
     case 0:
       return p < 0.5f ? 4.f * p - 1.f : 3.f - 4.f * p;
     case 1:
@@ -636,7 +741,7 @@ private:
       float q = p - pw;
       if (q < 0.f) q += 1.f;
       float s = (p < pw ? 1.f : -1.f) + polyBlep(p, dt) - polyBlep(q, dt);
-      if (p_.duty == 3) s *= 0.5f * ((2.f * p - 1.f - polyBlep(p, dt)) + 1.f);
+      if (wave == 3) s *= 0.5f * ((2.f * p - 1.f - polyBlep(p, dt)) + 1.f);
       return s;
     }
     }
@@ -693,9 +798,29 @@ private:
     if (pwPhase_ >= 1.f) pwPhase_ -= 1.f;
     const float pw = 0.5f + 0.4f * (pwPhase_ < 0.5f ? 4.f * pwPhase_ - 1.f : 3.f - 4.f * pwPhase_);
 
+    const bool sync = p_.sub == 3;
+    const bool ring = p_.sub == 4;
+    if (sync) { // sweep the slave ratio so the sync timbre moves
+      const float tri = pwPhase_ < 0.5f ? 4.f * pwPhase_ - 1.f : 3.f - 4.f * pwPhase_;
+      const float inc = static_cast<float>(sidInc2_) * (1.5f + 0.9f * tri);
+      sv_[1].inc = static_cast<uint32_t>(inc > 8388607.f ? 8388607.f : inc);
+    }
     for (int s = 0; s < 2; ++s) {
-      float m = sidVoice(sv_[0], pw) + sidVoice(sv_[1], pw);
-      if (p_.sub) m += sidVoice(sv_[2], pw);
+      float m;
+      if (ring) { // triangle of voice 1 x MSB of voice 2
+        const float t = sidVoice(sv_[0], pw, 0);
+        sidVoice(sv_[1], pw, 0);
+        m = 1.6f * t * (sv_[1].acc < 0x800000u ? 1.f : -1.f);
+      } else {
+        const uint32_t a0 = sv_[0].acc;
+        m = sidVoice(sv_[0], pw, p_.duty);
+        if (sync && sv_[0].acc < a0) { // master wrapped: restart slave with sub-sample phase
+          const float over = static_cast<float>(sv_[0].acc) / static_cast<float>(sv_[0].inc);
+          sv_[1].acc = (static_cast<uint32_t>(over * static_cast<float>(sv_[1].inc)) - sv_[1].inc) & 0xFFFFFFu;
+        }
+        m += sidVoice(sv_[1], pw, p_.duty);
+        if (p_.sub == 1 || p_.sub == 2) m += sidVoice(sv_[2], pw, p_.duty);
+      }
       if (p_.noise) m += sidNoiseVoice(sv_[3]);
       sidHistPos_ = (sidHistPos_ + 1) & 31;
       sidHist_[sidHistPos_] = m;
@@ -738,6 +863,10 @@ private:
   uint8_t vibDelay_ = 0;
   bool gate_ = false;
   bool dirty_ = false;
+  bool hpLatch_ = false;
+  float shapeMod_ = 0.f;
+  float p1Base_ = 1.0e9f;
+  uint32_t sidInc2_ = 0;
 
   SidVoice sv_[4];
   SidState sidState_ = kIdle;

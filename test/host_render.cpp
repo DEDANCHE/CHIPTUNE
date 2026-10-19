@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "../src/apu_core.h"
+#include "../src/presets.h"
 
 using namespace chiptune;
 
@@ -206,13 +207,113 @@ int main(int argc, char **argv) {
     check(f5 > 10 * o5, "POKEY 5-bit poly pitch (fund / 233 Hz)", f5 / o5);
   }
   {
+    // Konami VRC6: pulse pitch, alias, saw layer.
+    ApuParams q;
+    q.chip = kChipVRC6;
+    q.quantize = false;
+    q.duty = 2;
+    const auto vr = note(q, 440.f, 1.f, 1.f);
+    const double vf = mag(vr, 4800, 48000, 440.0), vo = mag(vr, 4800, 48000, 466.0);
+    check(vf > 10 * vo, "VRC6 440 Hz pitch (fund / 466 Hz)", vf / vo);
+    const auto vrHi = note(q, 3150.f, 1.f, 1.f);
+    const double va = 20 * std::log10(mag(vrHi, 4800, 48000, 19650.0) / mag(vrHi, 4800, 48000, 3150.0));
+    check(va < -40.0, "VRC6 alias @19650 Hz rel. fund (dB)", va);
+    q.sub = 1;
+    const auto vs = note(q, 220.f, 1.f, 0.25f);
+    check(peakAbs(vs, 2000, 12000) > 0.05, "VRC6 sounding with saw", peakAbs(vs, 2000, 12000));
+    check(peakAbs(vs, 14000, 48000) < 1e-3, "VRC6 silent after note-off", peakAbs(vs, 14000, 48000));
+  }
+  {
+    // Sunsoft 5B: AY clone at the NES clock.
+    ApuParams q;
+    q.chip = kChipS5B;
+    q.quantize = false;
+    const auto sb = note(q, 440.f, 1.f, 1.f);
+    const double sf = mag(sb, 4800, 48000, 440.0), so = mag(sb, 4800, 48000, 466.0);
+    check(sf > 10 * so, "5B 440 Hz pitch (fund / 466 Hz)", sf / so);
+    q.sub = 3;
+    const auto bz = note(q, 220.f, 1.f, 0.25f);
+    check(peakAbs(bz, 2000, 12000) > 0.05, "5B buzz sounding", peakAbs(bz, 2000, 12000));
+    check(peakAbs(bz, 14000, 48000) < 1e-3, "5B silent after note-off", peakAbs(bz, 14000, 48000));
+  }
+  {
+    // Atari 2600 TIA: 5-bit divider, tested above 1 kHz where registers do not fold.
+    ApuParams q;
+    q.chip = kChipTIA;
+    q.quantize = false;
+    q.duty = 0;
+    const auto ti = note(q, 1000.f, 1.f, 1.f);
+    const double tf = mag(ti, 4800, 48000, 1000.0);
+    check(tf > 0.05, "TIA 1 kHz fundamental", tf);
+    q.duty = 1;
+    q.noise = 2;
+    const auto tn = note(q, 220.f, 1.f, 0.25f);
+    check(peakAbs(tn, 2000, 12000) > 0.05, "TIA sounding", peakAbs(tn, 2000, 12000));
+    check(peakAbs(tn, 14000, 48000) < 1e-3, "TIA silent after note-off", peakAbs(tn, 14000, 48000));
+  }
+  {
+    // New voicings: each must sound, differ from its base voicing, and release to silence.
+    struct Case { const char *name; ApuParams base, mod; } cases[3];
+    cases[0].name = "SID hard sync";
+    cases[0].base.chip = cases[0].mod.chip = kChipSID;
+    cases[0].base.duty = cases[0].mod.duty = 1;
+    cases[0].mod.sub = 3;
+    cases[1].name = "SID ring mod";
+    cases[1].base.chip = cases[1].mod.chip = kChipSID;
+    cases[1].base.duty = cases[1].mod.duty = 0;
+    cases[1].mod.sub = 4;
+    cases[1].mod.interval = 4;
+    cases[2].name = "PCE LFO FM";
+    cases[2].base.chip = cases[2].mod.chip = kChipPCE;
+    cases[2].mod.sub = 3;
+    cases[2].mod.interval = 5;
+    cases[2].mod.detune = 8.f;
+    // The POKEY high-pass needs its own base: the plain voice with the same duty.
+    for (const Case &c : cases) {
+      const auto a = note(c.base, 220.f, 1.5f, 0.5f);
+      const auto b = note(c.mod, 220.f, 1.5f, 0.5f);
+      double diff = 0;
+      for (size_t i = 4800; i < 24000; ++i) diff += std::fabs(a[i] - b[i]);
+      char buf[96];
+      std::snprintf(buf, sizeof buf, "%s sounds", c.name);
+      check(peakAbs(b, 4800, 24000) > 0.05, buf, peakAbs(b, 4800, 24000));
+      std::snprintf(buf, sizeof buf, "%s differs from plain (mean |d|)", c.name);
+      check(diff / 19200 > 0.01, buf, diff / 19200);
+      std::snprintf(buf, sizeof buf, "%s silent after release", c.name);
+      check(peakAbs(b, 60000, 72000) < 1e-3, buf, peakAbs(b, 60000, 72000));
+    }
+    ApuParams a, b;
+    a.chip = b.chip = kChipPOKEY;
+    a.duty = b.duty = 0;
+    b.sub = 3;
+    const auto pa = note(a, 220.f, 1.f, 1.f), pb = note(b, 220.f, 1.f, 1.f);
+    double diff = 0;
+    for (size_t i = 4800; i < 24000; ++i) diff += std::fabs(pa[i] - pb[i]);
+    check(peakAbs(pb, 4800, 24000) > 0.02, "POKEY high-pass sounds", peakAbs(pb, 4800, 24000));
+    check(diff / 19200 > 0.01, "POKEY high-pass differs from plain (mean |d|)", diff / 19200);
+  }
+  {
+    // Presets: every one sounds and decays to silence after note-off.
+    for (int i = 0; i < kNumPresets; ++i) {
+      const auto s = note(preset(i), 220.f, 2.f, 0.5f);
+      char buf[96];
+      std::snprintf(buf, sizeof buf, "preset %-10s sounds", presetName(i));
+      check(peakAbs(s, 2000, 24000) > 0.03, buf, peakAbs(s, 2000, 24000));
+      std::snprintf(buf, sizeof buf, "preset %-10s silent after release", presetName(i));
+      check(peakAbs(s, 84000, 96000) < 1e-3, buf, peakAbs(s, 84000, 96000));
+      std::snprintf(buf, sizeof buf, "preset %-10s peak < 1", presetName(i));
+      check(peakAbs(s, 0, s.size()) < 1.0, buf, peakAbs(s, 0, s.size()));
+      writeWav(dir + "/preset_" + std::to_string(i) + ".wav", s, 48000);
+    }
+  }
+  {
     // Robustness: every chip, extreme frequencies and out-of-range parameters.
     static Apu a;
     a.init(48000.f);
     bool ok = true;
     float worst = 0.f;
     const float freqs[] = {0.f, 1.f, 20.f, 440.f, 12000.f, 30000.f, 1e9f};
-    for (int c = 0; c < 9; ++c) { // 7 and 8 are out of range on purpose
+    for (int c = 0; c < 12; ++c) { // 10 and 11 are out of range on purpose
       for (int variant = 0; variant < 4; ++variant) {
         for (float hz : freqs) {
           ApuParams q;
@@ -229,6 +330,7 @@ int main(int argc, char **argv) {
           q.quantize = variant != 1;
           q.detune = variant * 5.f;
           a.setParams(q);
+          a.setShapeMod(variant == 1 ? -1.f : (variant == 2 ? 1.f : 0.f));
           a.setFrequency(hz);
           a.noteOn(127);
           for (int i = 0; i < 6000; ++i) {

@@ -4,7 +4,8 @@ Exploration of a chiptune oscillator unit for the **Korg NTS-1 digital kit mkII*
 (logue SDK) built on an APU-style engine instead of a classic wavetable/PolyBLEP oscillator.
 
 - Design notes, engine comparison and open questions: [docs/DESIGN.md](docs/DESIGN.md)
-- `src/apu_core.h` – portable, header-only APU core (NES, Game Boy, Sega SN76489, Atari ST YM2149, C64 SID, PC Engine HuC6280 and Atari POKEY models)
+- `src/apu_core.h` – portable, header-only APU core (NES, Game Boy, Sega SN76489, Atari ST YM2149, C64 SID, PC Engine HuC6280, Atari POKEY, Konami VRC6, Sunsoft 5B and Atari 2600 TIA models)
+- `src/presets.h` / [docs/PRESETS.md](docs/PRESETS.md) – 15 reference presets
 - `unit/` – NTS-1 mkII unit glue (`header.c`, `osc.h`), written against the SDK `dummy-osc` template
 - `test/host_render.cpp` – host test + WAV renderer
 
@@ -12,8 +13,9 @@ Exploration of a chiptune oscillator unit for the **Korg NTS-1 digital kit mkII*
 
 | Piece | State |
 |-------|-------|
-| APU core | Compiles clean with `-Wall -Wextra -std=c++11`; host checks pass for all seven chips (pitch, alias level, filter, release) |
+| APU core | Compiles clean with `-Wall -Wextra -std=c++11`; host checks pass for all ten chips (pitch, alias level, filter, release, sync / ring / FM / high-pass voicings, presets, fuzz) |
 | Unit glue | Written, **not yet built with the logue SDK toolchain or run on hardware** |
+| SHAPE_LFO / pitch bend | Implemented; ranges assumed (bend 14-bit centred 8192, ±2 semitones). Audio input not used: all 10 parameter slots are taken |
 | CPU / RAM budget on Cortex-M7 | Not measured |
 
 ## Host test
