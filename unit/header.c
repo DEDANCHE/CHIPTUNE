@@ -19,18 +19,18 @@ const __unit_header unit_header_t unit_header = {
     .params = {
         // min, max, center (unused), default, type, frac. bits, frac. mode, <reserved>, name
 
-        // A knob: preset 0..32 (see src/presets.h); a preset sets every parameter, duty included
-        {0, 59, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"PRESET"}},
+        // A knob: vibrato depth
+        {0, 15, 0, 0, k_unit_param_type_none, 0, 0, 0, {"VIB"}},
         // B knob: pulse 2 detune in period-register steps (0..16); on SID the filter cutoff (open..closed)
         {0, 1023, 0, 0, k_unit_param_type_none, 0, 0, 0, {"DETN/FLT"}},
 
-        // Edit menu
+        // Edit menu: preset 0..59 (see src/presets.h) sets every parameter, duty included
+        {0, 59, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"PRESET"}},
         {0, 12, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"CHIP"}},
         {0, 5, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"ARP"}},
         {0, 4, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"SUB"}},
         {0, 5, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"NOISE"}},
         {0, 15, 0, 0, k_unit_param_type_none, 0, 0, 0, {"DECAY"}},
         {0, 1, 0, 1, k_unit_param_type_strings, 0, 0, 0, {"QUANT"}},
-        {0, 5, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"INTVL"}},
-        {0, 15, 0, 0, k_unit_param_type_none, 0, 0, 0, {"VIB"}}},
+        {0, 5, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"INTVL"}}},
 };

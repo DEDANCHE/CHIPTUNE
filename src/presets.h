@@ -1,5 +1,5 @@
 #pragma once
-// Reference presets for the CHIPTUNE unit. Knob A (PRESET) loads one of these;
+// Reference presets for the CHIPTUNE unit. The PRESET menu item loads one of these;
 // the table also documents the parameter values (see docs/PRESETS.md) and is
 // the test material for the host renderer.
 //

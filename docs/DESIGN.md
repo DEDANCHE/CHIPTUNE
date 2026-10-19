@@ -43,16 +43,16 @@ note (w0, velocity) ─► Apu::control tick @240 Hz: envelope, 60 Hz arp, vibra
 
 | # | Name | Meaning |
 |---|------|---------|
-| 0 (knob A) | PRESET | 0..59, loads `chiptune::preset(i)` (all parameters, including the duty field: pulse duty zone 12.5/25/50/75 %; GB / PCE: wave table; SID: waveform; POKEY / TIA: distortion) |
+| 0 (knob A) | VIB | vibrato depth 0–15 |
 | 1 (knob B) | DETN/FLT | pulse 2 detune, 0..16 register steps; SID: filter cutoff (open..closed); SHAPE_LFO adds to it |
-| 2 | CHIP | NES / GB / SEGA (SN76489) / ATARI (YM2149) / SID (C64) / PCE (HuC6280) / POKEY / VRC6 / 5B / TIA / N163 / FDS / PAULA |
-| 3 | ARP | off, maj, min, oct, 5th+oct, sus4 |
-| 4 | SUB | off, −1 oct, unison, then per chip: ATARI / 5B envelope buzz saw / triangle; SID hard sync / ring mod; PCE LFO FM; POKEY high-pass; PAULA FM / AM |
-| 5 | NOISE | off, low, mid, high, metal, buzz |
-| 6 | DECAY | 0 hold, 1–15 envelope speed |
-| 7 | QUANT | register quantisation on/off; SID: filter resonance on/off |
-| 8 | INTVL | pulse 2 interval: unison, m3, M3, P4, P5, oct |
-| 9 | VIB | vibrato depth 0–15 |
+| 2 | PRESET | 0..59, loads `chiptune::preset(i)` (all parameters, including vibrato and the duty field: pulse duty zone 12.5/25/50/75 %; GB / PCE: wave table; SID: waveform; POKEY / TIA: distortion); sits above CHIP in the edit menu |
+| 3 | CHIP | NES / GB / SEGA (SN76489) / ATARI (YM2149) / SID (C64) / PCE (HuC6280) / POKEY / VRC6 / 5B / TIA / N163 / FDS / PAULA |
+| 4 | ARP | off, maj, min, oct, 5th+oct, sus4 |
+| 5 | SUB | off, −1 oct, unison, then per chip: ATARI / 5B envelope buzz saw / triangle; SID hard sync / ring mod; PCE LFO FM; POKEY high-pass; PAULA FM / AM |
+| 6 | NOISE | off, low, mid, high, metal, buzz |
+| 7 | DECAY | 0 hold, 1–15 envelope speed |
+| 8 | QUANT | register quantisation on/off; SID: filter resonance on/off |
+| 9 | INTVL | pulse 2 interval: unison, m3, M3, P4, P5, oct |
 
 ## Chip models
 
@@ -98,7 +98,7 @@ The 8-bit noise and combined waveforms are approximations rather than the real D
 
 - `SHAPE_LFO`: SID filter cutoff += 0.5 × LFO; on event chips it modulates pulse 2 detune by up to ±8 register steps.
 - Pitch bend: ±2 semitones, applied in `process`.
-- `src/presets.h` holds 60 reference presets (`chiptune::preset(i)`); knob A (`PRESET`) selects one, see [docs/PRESETS.md](PRESETS.md).
+- `src/presets.h` holds 60 reference presets (`chiptune::preset(i)`); the PRESET menu item (above CHIP) selects one, see [docs/PRESETS.md](PRESETS.md).
 
 ## Other APUs to add later (same primitives)
 
