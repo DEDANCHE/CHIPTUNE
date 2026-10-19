@@ -27,6 +27,18 @@ constexpr uint8_t kDuty[4][8] = {{0, 1, 0, 0, 0, 0, 0, 0},
                                  {0, 1, 1, 1, 1, 0, 0, 0},
                                  {1, 0, 0, 1, 1, 1, 1, 1}};
 constexpr int kNumIntervals = 6;
+
+// Output stage: chips are mixed at their hardware-relative levels (the NES mixer and the GB / PCE
+// wave channels sit well below the PSG-style chips), so each chip gets make-up gain, then a soft
+// knee keeps peaks below full scale instead of hard clipping.
+inline float softLimit(float y) {
+  constexpr float knee = 0.75f;
+  const float a = y < 0.f ? -y : y;
+  if (a <= knee) return y;
+  const float t = (a - knee) * (1.f / (1.f - knee));
+  const float o = knee + (1.f - knee) * t / (1.f + t);
+  return y < 0.f ? -o : o;
+}
 constexpr int8_t kIntervals[kNumIntervals] = {0, 3, 4, 5, 7, 12};
 constexpr int8_t kArp[6][3] = {{0, 0, 0}, {0, 4, 7}, {0, 3, 7}, {0, 12, 0}, {0, 7, 12}, {0, 5, 7}};
 constexpr uint8_t kArpLen[6] = {1, 3, 3, 2, 3, 3};
@@ -305,7 +317,7 @@ public:
       if (level_ == 0.f && y < 1e-5f && y > -1e-5f) blip_.zeroAcc(); // shed float drift
     }
     y -= dc_;
-    return y > 1.f ? 1.f : (y < -1.f ? -1.f : y);
+    return detail::softLimit(y * outGain_);
   }
 
 private:
@@ -473,6 +485,13 @@ private:
     case kChipS5B: spec_ = {1789773.f, 4.f, 4.f, detail::kAyNoise, 0.2f, 4095.f}; break;
     case kChipTIA: spec_ = {3579545.f, 114.f, 114.f, detail::kTiaNoise, 0.2f, 32.f}; break;
     default:       spec_ = {sr_, 1.f, 1.f, detail::kNesNoise, 1.f, 2048.f}; break;
+    }
+    switch (c) { // make-up gain, about +3..12 dB, see detail::softLimit
+    case kChipNES:   outGain_ = 4.0f; break;
+    case kChipGB:    outGain_ = 3.55f; break;
+    case kChipPCE:   outGain_ = 2.5f; break;
+    case kChipSID:   outGain_ = 1.4f; break;
+    default:         outGain_ = 1.78f; break;
     }
     for (int v = 0; v < 16; ++v) {
       if (v == 0)
@@ -837,11 +856,12 @@ private:
       sidBand_ += sidF_ * high;
       y = sidLow_;
     }
-    return y > 1.f ? 1.f : (y < -1.f ? -1.f : y);
+    return detail::softLimit(y * outGain_);
   }
 
   BlipBuf blip_;
   ApuParams p_;
+  float outGain_ = 1.f;
   ChipSpec spec_{1789773.f, 2.f, 1.f, detail::kNesNoise, 1.4f, 2048.f};
   Chan p1_, p2_, sub_, noise_, env_;
   uint8_t gbWave_[4][32] = {};

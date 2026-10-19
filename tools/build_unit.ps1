@@ -41,7 +41,9 @@ New-Item -ItemType Directory -Force $proj | Out-Null
 Copy-Item "$plat\dummy-osc\unit.cc", "$plat\dummy-osc\Makefile" $proj -Force
 (Get-Content "$plat\dummy-osc\config.mk" -Raw).Replace("PROJECT := dummy_osc", "PROJECT := $Project") |
   Set-Content "$proj\config.mk" -NoNewline
-Copy-Item "$repo\unit\header.c", "$repo\unit\osc.h", "$repo\src\apu_core.h" $proj -Force
+# The SDK makefile has no header dependencies, so always rebuild from scratch.
+Remove-Item "$proj\build", "$proj\*.nts1mkiiunit" -Recurse -Force -ErrorAction SilentlyContinue
+Copy-Item "$repo\unit\header.c", "$repo\unit\osc.h", "$repo\src\apu_core.h", "$repo\src\presets.h" $proj -Force
 
 function Fwd($p) { $p -replace '\\', '/' }
 Push-Location $proj
