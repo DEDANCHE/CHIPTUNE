@@ -519,11 +519,12 @@ private:
     switch (c) { // make-up gain, about +3..12 dB, see detail::softLimit
     case kChipNES:   outGain_ = 4.0f; break;
     case kChipGB:    outGain_ = 3.55f; break;
-    case kChipPCE:   outGain_ = 2.5f; break;
-    case kChipN163:  outGain_ = 2.5f; break;
-    case kChipFDS:   outGain_ = 3.0f; break;
-    case kChipPaula: outGain_ = 2.5f; break;
-    case kChipSID:   outGain_ = 1.4f; break;
+    case kChipPCE:   outGain_ = 3.5f; break;
+    case kChipVRC6:  outGain_ = 2.4f; break;
+    case kChipN163:  outGain_ = 3.0f; break;
+    case kChipFDS:   outGain_ = 3.5f; break;
+    case kChipPaula: outGain_ = 2.8f; break;
+    case kChipSID:   outGain_ = 2.0f; break;
     default:         outGain_ = 1.78f; break;
     }
     for (int v = 0; v < 16; ++v) {
