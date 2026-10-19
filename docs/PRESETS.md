@@ -1,12 +1,12 @@
 # Reference presets
 
-Knob A (PRESET, 0..59) loads these on the unit; the values below are what each preset sets.
+The PRESET menu item (0..59, just above CHIP; knob A is VIB, knob B is DETN/FLT) loads these on the unit; the values below are what each preset sets.
 They are also defined in `src/presets.h` (`chiptune::preset(i)`), and the host test renders each
 one to `build/preset_<i>.wav`. Unlisted parameters are at their defaults (0 / off).
 
 A preset overwrites the whole parameter set, duty included (there is no separate DUTY knob). The edit
-menu is not refreshed, so it can show stale values after a preset change; moving a menu item or
-knob B afterwards edits that one parameter on top of the preset. Menu values that still equal the
+menu is not refreshed, so it can show stale values after a preset change; moving a menu item,
+knob A or knob B afterwards edits that one parameter on top of the preset. Menu values that still equal the
 last value seen are ignored, so a patch reloaded with a preset keeps the preset's sound.
 
 Raw values: DUTY 0..3, DETN in register steps (knob B 0..1023 maps to 0..16), CHIP 0..12

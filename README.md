@@ -5,7 +5,7 @@ Exploration of a chiptune oscillator unit for the **Korg NTS-1 digital kit mkII*
 
 - Design notes, engine comparison and open questions: [docs/DESIGN.md](docs/DESIGN.md)
 - `src/apu_core.h` – portable, header-only APU core (NES, Game Boy, Sega SN76489, Atari ST YM2149, C64 SID, PC Engine HuC6280, Atari POKEY, Konami VRC6, Sunsoft 5B, Atari 2600 TIA, Namco N163, Famicom Disk System and Amiga Paula models)
-- `src/presets.h` / [docs/PRESETS.md](docs/PRESETS.md) – 60 presets, selected with knob A
+- `src/presets.h` / [docs/PRESETS.md](docs/PRESETS.md) – 60 presets, selected with the PRESET menu item (knob A is VIB, knob B is DETN/FLT)
 - `unit/` – NTS-1 mkII unit glue (`header.c`, `osc.h`), written against the SDK `dummy-osc` template
 - `test/host_render.cpp` – host test + WAV renderer
 

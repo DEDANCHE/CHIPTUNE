@@ -18,8 +18,9 @@ public:
 
   enum
   {
-    PRESET = 0U,
-    DETN,
+    VIB = 0U, // knob A
+    DETN,     // knob B
+    PRESET,
     CHIP,
     ARP,
     SUB,
@@ -27,7 +28,6 @@ public:
     DECAY,
     QUANT,
     INTVL,
-    VIB,
     NUM_PARAMS
   };
 
