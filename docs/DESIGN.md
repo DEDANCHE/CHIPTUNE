@@ -44,31 +44,49 @@ note (w0, velocity) ─► Apu::control tick @240 Hz: envelope, 60 Hz arp, vibra
 | # | Name | Meaning |
 |---|------|---------|
 | 0 (knob A) | DUTY | pulse duty zone 12.5/25/50/75 %; GB: wave table |
-| 1 (knob B) | DETN | pulse 2 detune, 0..16 register steps |
-| 2 | CHIP | NES / GB |
+| 1 (knob B) | DETN/FLT | pulse 2 detune, 0..16 register steps; SID: filter cutoff (open..closed) |
+| 2 | CHIP | NES / GB / SEGA (SN76489) / ATARI (YM2149) / SID (C64) |
 | 3 | ARP | off, maj, min, oct, 5th+oct, sus4 |
-| 4 | SUB | off, −1 oct, unison |
+| 4 | SUB | off, −1 oct, unison; ATARI: envelope buzz saw / triangle |
 | 5 | NOISE | off, low, mid, high, metal, buzz |
 | 6 | DECAY | 0 hold, 1–15 envelope speed |
-| 7 | QUANT | register quantisation on/off |
+| 7 | QUANT | register quantisation on/off; SID: filter resonance on/off |
 | 8 | INTVL | pulse 2 interval: unison, m3, M3, P4, P5, oct |
 | 9 | VIB | vibrato depth 0–15 |
 
+## Chip models
+
+| CHIP | Chip | Engine | Notes |
+|------|------|--------|-------|
+| NES | 2A03 | event-driven | 2 pulses, triangle, LFSR noise, non-linear mixer |
+| GB | LR35902 APU | event-driven | 2 pulses, 4-bit wave RAM, linear mixer |
+| SEGA | SN76489 | event-driven | 10-bit dividers, 2 dB attenuation, white / periodic noise (setting 5 is pitched by the note) |
+| ATARI | YM2149 (Atari ST) | event-driven | 12-bit dividers, 3 dB steps, 17-bit LFSR noise, envelope "buzzer" via `SUB` = BZSAW / BZTRI, tuned to the note |
+| SID | MOS 6581/8580 (C64) | continuous | Saw / triangle / pulse (auto PWM) voices, 23-bit LFSR noise, ADSR-style envelope, state-variable low-pass |
+
+C64 and SID are the same chip, and the Atari ST uses the YM2149, so five models cover the four names requested.
+SID is a different engine path because its voices are continuous analog-style oscillators: 24-bit phase
+accumulators with polyBLEP edges, run at 2x the sample rate and decimated by a 31-tap FIR. Unlike the others its
+note keeps sounding through an exponential release after note-off.
+
+Not implemented for SID: hard sync, ring modulation, band-pass/high-pass modes, per-voice routing.
+The 8-bit noise and combined waveforms are approximations rather than the real DAC curves.
+
 ## Measured so far (host, 48 kHz)
 
-- 50 % pulse at 3150 Hz: folded 9th-harmonic alias at **−62 dB** relative to the fundamental (a naive pulse is about −19 dB).
-- 440 Hz pitch: fundamental ≥ 77× the neighbouring bin.
-- Note-off returns to silence (initial DC-blocker version undershot by −0.36 and drooped; replaced by an exact integrator plus a gate-aware DC trim).
+- NES 50 % pulse at 3150 Hz: folded 9th-harmonic alias at **-62 dB** relative to the fundamental (a naive pulse is about -19 dB).
+- SEGA 3150 Hz square: **-60.6 dB**. SID 3150 Hz saw: **-75 dB** (a first 11-tap decimator only reached -34 dB; the 31-tap one fixes it).
+- 440 Hz pitch: fundamental at least 38x the neighbouring bin on every chip; the YM2149 buzzer at 220 Hz is 47x.
+- SID low-pass (`cutoff` 0.6) cuts 6.6 kHz by more than 40 dB relative to open.
+- Note-off returns to silence on all chips (SID after its release tail).
 
 ## Other APUs to add later (same primitives)
 
 | Chip | What it needs beyond the core |
 |------|------------------------------|
-| SN76489 (Master System) | 3 squares with 10-bit dividers + white/periodic noise, 2 dB attenuators |
-| PC Engine (HuC6280) | 6 × 32-sample 5-bit wave channels, LFO, noise on 2 channels |
+| PC Engine (HuC6280) | 6 x 32-sample 5-bit wave channels, LFO, noise on 2 channels |
 | POKEY (Atari) | Poly-counter distortion modes, 16-bit pairing, high-pass filter |
-| SID | Analog filter and ring-mod; needs a different (continuous) engine path |
-
+| SID extras | Hard sync and ring mod (need polyBLEP at the discontinuity), real DAC/combined waveform tables |
 ## Open questions / next steps
 
 1. Build with the SDK Docker image; check unit size (<48 KB) and RAM (<48 KB; kernel table is ~4 KB, built lazily on first use).

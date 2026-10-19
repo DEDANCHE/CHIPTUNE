@@ -103,6 +103,61 @@ int main(int argc, char **argv) {
     check(peakAbs(rel, 14000, 48000) < 1e-3, "silent after note-off", peakAbs(rel, 14000, 48000));
   }
 
+  {
+    // Sega SN76489: square at 440 Hz, 3-register-step quantisation off.
+    ApuParams q;
+    q.chip = kChipPSG;
+    q.quantize = false;
+    const auto psg = note(q, 440.f, 1.f, 1.f);
+    const double pf = mag(psg, 4800, 48000, 440.0), po = mag(psg, 4800, 48000, 466.0);
+    check(pf > 10 * po, "PSG 440 Hz pitch (fund / 466 Hz)", pf / po);
+    const auto psgHi = note(q, 3150.f, 1.f, 1.f);
+    const double pa = 20 * std::log10(mag(psgHi, 4800, 48000, 19650.0) / mag(psgHi, 4800, 48000, 3150.0));
+    check(pa < -40.0, "PSG alias @19650 Hz rel. fund (dB)", pa);
+    q.noise = 5; // pitched periodic noise tracks the note
+    const auto buzzN = note(q, 220.f, 1.f, 1.f);
+    check(peakAbs(buzzN, 4800, 48000) > 0.05, "PSG periodic noise sounds", peakAbs(buzzN, 4800, 48000));
+  }
+  {
+    // Atari ST YM2149: tone pitch, and envelope buzzer tuned to the note.
+    ApuParams q;
+    q.chip = kChipAY;
+    q.quantize = false;
+    const auto ay = note(q, 440.f, 1.f, 1.f);
+    const double af = mag(ay, 4800, 48000, 440.0), ao = mag(ay, 4800, 48000, 466.0);
+    check(af > 10 * ao, "YM2149 440 Hz pitch (fund / 466 Hz)", af / ao);
+    q.sub = 3;
+    const auto bz = note(q, 220.f, 1.f, 1.f);
+    const double bf = mag(bz, 4800, 48000, 220.0), bo = mag(bz, 4800, 48000, 233.0);
+    check(bf > 10 * bo && bf > 0.02, "YM2149 envelope buzz pitch", bf / bo);
+    const auto rel = note(q, 220.f, 1.f, 0.25f);
+    check(peakAbs(rel, 14000, 48000) < 1e-3, "YM2149 silent after note-off", peakAbs(rel, 14000, 48000));
+  }
+  {
+    // C64 SID: polyBLEP saw alias level, pitch, filter, release tail.
+    ApuParams q;
+    q.chip = kChipSID;
+    q.duty = 1;
+    const auto saw = note(q, 440.f, 1.f, 1.f);
+    const double sf = mag(saw, 4800, 48000, 440.0), so = mag(saw, 4800, 48000, 466.0);
+    check(sf > 10 * so, "SID saw 440 Hz pitch (fund / 466 Hz)", sf / so);
+    const auto hi = note(q, 3150.f, 1.f, 1.f);
+    const double sa = 20 * std::log10(mag(hi, 4800, 48000, 19650.0) / mag(hi, 4800, 48000, 3150.0));
+    check(sa < -60.0, "SID saw alias @19650 Hz rel. fund (dB)", sa);
+    q.cutoff = 0.6f;
+    const auto lp = note(q, 440.f, 1.f, 1.f);
+    const double hOpen = mag(saw, 4800, 48000, 6600.0), hLp = mag(lp, 4800, 48000, 6600.0);
+    check(hLp < 0.3 * hOpen, "SID low-pass cuts 6.6 kHz (ratio)", hLp / hOpen);
+    q.cutoff = 0.f;
+    q.duty = 2;
+    q.noise = 2;
+    q.sub = 1;
+    q.decay = 6;
+    const auto full = note(q, 220.f, 1.5f, 0.25f);
+    check(peakAbs(full, 2000, 12000) > 0.05, "SID sounding", peakAbs(full, 2000, 12000));
+    check(peakAbs(full, 40000, 72000) < 1e-3, "SID silent after release", peakAbs(full, 40000, 72000));
+  }
+
   p.duty = 2;
   p.quantize = false;
   writeWav(dir + "/nes_pulse_440.wav", note(p, 440.f, 1.f, 1.f), 48000);
@@ -124,6 +179,29 @@ int main(int argc, char **argv) {
   p.noise = 2;
   p.decay = 8;
   writeWav(dir + "/gb_full.wav", note(p, 330.f, 1.5f, 1.f), 48000);
+
+  p = ApuParams();
+  p.chip = kChipPSG;
+  p.sub = 2;
+  p.noise = 5;
+  p.decay = 5;
+  writeWav(dir + "/psg_full.wav", note(p, 220.f, 1.5f, 1.f), 48000);
+
+  p = ApuParams();
+  p.chip = kChipAY;
+  p.sub = 3;
+  p.noise = 3;
+  p.decay = 8;
+  writeWav(dir + "/ym2149_buzz.wav", note(p, 110.f, 1.5f, 1.f), 48000);
+
+  p = ApuParams();
+  p.chip = kChipSID;
+  p.duty = 2;
+  p.sub = 1;
+  p.cutoff = 0.5f;
+  p.resonant = true;
+  p.arp = 1;
+  writeWav(dir + "/sid_pwm.wav", note(p, 110.f, 1.5f, 1.2f), 48000);
 
   // Silence check: gate off must return to zero and stay there.
   p = ApuParams();
