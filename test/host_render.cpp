@@ -291,6 +291,18 @@ int main(int argc, char **argv) {
     for (size_t i = 4800; i < 24000; ++i) diff += std::fabs(pa[i] - pb[i]);
     check(peakAbs(pb, 4800, 24000) > 0.02, "POKEY high-pass sounds", peakAbs(pb, 4800, 24000));
     check(diff / 19200 > 0.01, "POKEY high-pass differs from plain (mean |d|)", diff / 19200);
+
+    // SID UNI: the third voice is detuned -7 cent, so a partial appears below the fundamental.
+    ApuParams su, s0;
+    su.chip = s0.chip = kChipSID;
+    su.duty = s0.duty = 0;
+    su.noise = s0.noise = 0;
+    su.sub = 2;
+    s0.sub = 0;
+    const auto ua = note(su, 1760.f, 1.f, 1.f), u0 = note(s0, 1760.f, 1.f, 1.f);
+    const double lo = 1760.0 * 0.99595;
+    const double mu = mag(ua, 4800, 48000, lo), m0 = mag(u0, 4800, 48000, lo);
+    check(mu > 4.0 * m0 && mu > 0.02, "SID UNI adds a -7 cent partial (ratio to OFF)", mu / (m0 + 1e-9));
   }
   {
     // Wavetable chips: pitch accuracy, wave selection, voicing modes, release.

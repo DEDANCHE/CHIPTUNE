@@ -79,7 +79,7 @@ note keeps sounding through an exponential release after note-off.
 
 PCE and POKEY notes: the SN76489 was already covered by the SEGA model. The POKEY poly counters step once per divider fire instead of at the 1.79 MHz base clock, and each mode retunes the divider so the pattern repeats at the note pitch (the 4-bit and 5-bit modes would otherwise sound far below the note). PCE `SUB` = FM: channel 2 frequency-modulates channel 1 (the HuC6280 LFO idea; depth follows `DETN`). POKEY `SUB` = HPF: voice 3 acts as the sampling clock for a high-pass latch on voice 1. Not implemented: PCE direct-DAC mode and per-channel balance, POKEY 15 kHz base clock and channel linking.
 
-SID `SUB` = SYNC: voice 2 restarts on every wrap of voice 1 (slave ratio sweeps with the PWM LFO); `SUB` = RING: voice 1 triangle multiplied by the MSB of voice 2. The sync reset is not band-limited and ring mod is approximate. Not implemented for SID: band-pass/high-pass modes, per-voice routing.
+SID `SUB` = UNI adds a third voice detuned -7 cent (voice 2 is +7 cent), so the unison beats instead of just doubling voice 1. SID `SUB` = SYNC: voice 2 restarts on every wrap of voice 1 (slave ratio sweeps with the PWM LFO); `SUB` = RING: voice 1 triangle multiplied by the MSB of voice 2. The sync reset is not band-limited and ring mod is approximate. Not implemented for SID: band-pass/high-pass modes, per-voice routing.
 The 8-bit noise and combined waveforms are approximations rather than the real DAC curves.
 
 ## Measured so far (host, 48 kHz)

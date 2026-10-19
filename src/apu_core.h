@@ -656,7 +656,7 @@ private:
       sv_[0].inc = sidInc(f1);
       sv_[1].inc = sidInc(f2 * 1.00406f); // fixed +7 cent spread
       sidInc2_ = sv_[1].inc;
-      sv_[2].inc = sidInc(fs);
+      sv_[2].inc = sidInc(p_.sub == 2 ? fs * 0.99595f : fs); // UNI: -7 cent, else it would just double voice 1
       sv_[3].inc = sidInc(detail::kSidNoiseHz[p_.noise]);
       return;
     }
