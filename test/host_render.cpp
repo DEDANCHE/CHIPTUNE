@@ -157,6 +157,48 @@ int main(int argc, char **argv) {
     check(peakAbs(full, 2000, 12000) > 0.05, "SID sounding", peakAbs(full, 2000, 12000));
     check(peakAbs(full, 40000, 72000) < 1e-3, "SID silent after release", peakAbs(full, 40000, 72000));
   }
+  {
+    // PC Engine HuC6280: 32-sample wave channels.
+    ApuParams q;
+    q.chip = kChipPCE;
+    q.quantize = false;
+    q.duty = 1;
+    const auto pc = note(q, 440.f, 1.f, 1.f);
+    const double cf = mag(pc, 4800, 48000, 440.0), co = mag(pc, 4800, 48000, 466.0);
+    check(cf > 10 * co, "PCE 440 Hz pitch (fund / 466 Hz)", cf / co);
+    const auto pcHi = note(q, 3150.f, 1.f, 1.f);
+    const double ca = 20 * std::log10(mag(pcHi, 4800, 48000, 19650.0) / mag(pcHi, 4800, 48000, 3150.0));
+    check(ca < -40.0, "PCE alias @19650 Hz rel. fund (dB)", ca);
+    q.noise = 3;
+    q.sub = 1;
+    const auto pn = note(q, 220.f, 1.f, 0.25f);
+    check(peakAbs(pn, 2000, 12000) > 0.05, "PCE sounding with noise", peakAbs(pn, 2000, 12000));
+    check(peakAbs(pn, 14000, 48000) < 1e-3, "PCE silent after note-off", peakAbs(pn, 14000, 48000));
+  }
+  {
+    // Atari POKEY: pure tone, 4-bit poly buzz tuned to the note, 17-bit noise.
+    ApuParams q;
+    q.chip = kChipPOKEY;
+    q.quantize = false;
+    q.duty = 0;
+    const auto pk = note(q, 440.f, 1.f, 1.f);
+    const double kf = mag(pk, 4800, 48000, 440.0), ko = mag(pk, 4800, 48000, 466.0);
+    check(kf > 10 * ko, "POKEY 440 Hz pitch (fund / 466 Hz)", kf / ko);
+    const auto pkHi = note(q, 3150.f, 1.f, 1.f);
+    const double ka = 20 * std::log10(mag(pkHi, 4800, 48000, 19650.0) / mag(pkHi, 4800, 48000, 3150.0));
+    check(ka < -40.0, "POKEY alias @19650 Hz rel. fund (dB)", ka);
+    const auto low = note(q, 82.f, 1.f, 1.f); // needs the 16-bit divider pair
+    const double lf = mag(low, 4800, 48000, 82.0), lo = mag(low, 4800, 48000, 90.0);
+    check(lf > 10 * lo, "POKEY 82 Hz pitch via 16-bit pair (fund / 90 Hz)", lf / lo);
+    q.duty = 1;
+    const auto p4 = note(q, 220.f, 1.f, 1.f);
+    const double bf = mag(p4, 4800, 48000, 220.0), bo = mag(p4, 4800, 48000, 233.0);
+    check(bf > 10 * bo, "POKEY 4-bit poly pitch (fund / 233 Hz)", bf / bo);
+    q.noise = 2;
+    const auto pn = note(q, 220.f, 1.f, 0.25f);
+    check(peakAbs(pn, 2000, 12000) > 0.05, "POKEY sounding with noise", peakAbs(pn, 2000, 12000));
+    check(peakAbs(pn, 14000, 48000) < 1e-3, "POKEY silent after note-off", peakAbs(pn, 14000, 48000));
+  }
 
   p.duty = 2;
   p.quantize = false;
@@ -202,6 +244,22 @@ int main(int argc, char **argv) {
   p.resonant = true;
   p.arp = 1;
   writeWav(dir + "/sid_pwm.wav", note(p, 110.f, 1.5f, 1.2f), 48000);
+
+  p = ApuParams();
+  p.chip = kChipPCE;
+  p.duty = 1;
+  p.detune = 3.f;
+  p.noise = 2;
+  p.decay = 6;
+  writeWav(dir + "/pce_full.wav", note(p, 165.f, 1.5f, 1.f), 48000);
+
+  p = ApuParams();
+  p.chip = kChipPOKEY;
+  p.duty = 1;
+  p.sub = 1;
+  p.arp = 1;
+  p.decay = 5;
+  writeWav(dir + "/pokey_buzz.wav", note(p, 110.f, 1.5f, 1.f), 48000);
 
   // Silence check: gate off must return to zero and stay there.
   p = ApuParams();

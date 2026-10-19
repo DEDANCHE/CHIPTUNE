@@ -43,9 +43,9 @@ note (w0, velocity) ─► Apu::control tick @240 Hz: envelope, 60 Hz arp, vibra
 
 | # | Name | Meaning |
 |---|------|---------|
-| 0 (knob A) | DUTY | pulse duty zone 12.5/25/50/75 %; GB: wave table |
+| 0 (knob A) | DUTY | pulse duty zone 12.5/25/50/75 %; GB / PCE: wave table; SID: waveform; POKEY: distortion (pure / 4-bit / 5-bit / 5+4-bit poly) |
 | 1 (knob B) | DETN/FLT | pulse 2 detune, 0..16 register steps; SID: filter cutoff (open..closed) |
-| 2 | CHIP | NES / GB / SEGA (SN76489) / ATARI (YM2149) / SID (C64) |
+| 2 | CHIP | NES / GB / SEGA (SN76489) / ATARI (YM2149) / SID (C64) / PCE (HuC6280) / POKEY |
 | 3 | ARP | off, maj, min, oct, 5th+oct, sus4 |
 | 4 | SUB | off, −1 oct, unison; ATARI: envelope buzz saw / triangle |
 | 5 | NOISE | off, low, mid, high, metal, buzz |
@@ -62,12 +62,16 @@ note (w0, velocity) ─► Apu::control tick @240 Hz: envelope, 60 Hz arp, vibra
 | GB | LR35902 APU | event-driven | 2 pulses, 4-bit wave RAM, linear mixer |
 | SEGA | SN76489 | event-driven | 10-bit dividers, 2 dB attenuation, white / periodic noise (setting 5 is pitched by the note) |
 | ATARI | YM2149 (Atari ST) | event-driven | 12-bit dividers, 3 dB steps, 17-bit LFSR noise, envelope "buzzer" via `SUB` = BZSAW / BZTRI, tuned to the note |
+| PCE | HuC6280 (PC Engine) | event-driven | Three 32-sample 5-bit wave channels (sine / saw / 25 % pulse / triangle; channel 2 uses the next table), 15-bit LFSR noise, 3 dB volume steps |
+| POKEY | Atari 8-bit POKEY | event-driven | 8-bit dividers on the 64 kHz base clock, 16-bit pair on 1.79 MHz for low notes, distortion via `DUTY`; voice 3 stays pure; 17-bit poly noise |
 | SID | MOS 6581/8580 (C64) | continuous | Saw / triangle / pulse (auto PWM) voices, 23-bit LFSR noise, ADSR-style envelope, state-variable low-pass |
 
-C64 and SID are the same chip, and the Atari ST uses the YM2149, so five models cover the four names requested.
+C64 and SID are the same chip, and the Atari ST uses the YM2149, so five models cover the first four names requested; PC Engine and POKEY were added afterwards.
 SID is a different engine path because its voices are continuous analog-style oscillators: 24-bit phase
 accumulators with polyBLEP edges, run at 2x the sample rate and decimated by a 31-tap FIR. Unlike the others its
 note keeps sounding through an exponential release after note-off.
+
+PCE and POKEY notes: the SN76489 was already covered by the SEGA model. The POKEY poly counters step once per divider fire instead of at the 1.79 MHz base clock, and each mode retunes the divider so the pattern repeats at the note pitch (the 4-bit and 5-bit modes would otherwise sound far below the note). Not implemented: PCE LFO and direct-DAC mode, per-channel balance, POKEY high-pass filter, sync and 15 kHz base clock.
 
 Not implemented for SID: hard sync, ring modulation, band-pass/high-pass modes, per-voice routing.
 The 8-bit noise and combined waveforms are approximations rather than the real DAC curves.
@@ -78,14 +82,14 @@ The 8-bit noise and combined waveforms are approximations rather than the real D
 - SEGA 3150 Hz square: **-60.6 dB**. SID 3150 Hz saw: **-75 dB** (a first 11-tap decimator only reached -34 dB; the 31-tap one fixes it).
 - 440 Hz pitch: fundamental at least 38x the neighbouring bin on every chip; the YM2149 buzzer at 220 Hz is 47x.
 - SID low-pass (`cutoff` 0.6) cuts 6.6 kHz by more than 40 dB relative to open.
+- PCE saw: alias at 19.65 kHz **-61 dB**; POKEY pure square: **-56 dB**. POKEY 82 Hz uses the 16-bit pair (30x over the neighbouring bin); the 4-bit poly mode holds pitch at 39x.
 - Note-off returns to silence on all chips (SID after its release tail).
 
 ## Other APUs to add later (same primitives)
 
 | Chip | What it needs beyond the core |
 |------|------------------------------|
-| PC Engine (HuC6280) | 6 x 32-sample 5-bit wave channels, LFO, noise on 2 channels |
-| POKEY (Atari) | Poly-counter distortion modes, 16-bit pairing, high-pass filter |
+| PCE / POKEY extras | HuC6280 LFO and 6th channel, POKEY high-pass filter and channel linking |
 | SID extras | Hard sync and ring mod (need polyBLEP at the discontinuity), real DAC/combined waveform tables |
 ## Open questions / next steps
 

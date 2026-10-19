@@ -37,14 +37,14 @@ public:
     switch (index)
     {
     case DUTY:
-      p_.duty = static_cast<uint8_t>(value >> 8); // 0..1023 -> 0..3
+      p_.duty = static_cast<uint8_t>(value >> 8); // 0..1023 -> 0..3 (POKEY: distortion mode)
       break;
     case DETN:
       p_.detune = static_cast<float>(value) * (16.f / 1023.f); // register steps (non-SID)
       p_.cutoff = static_cast<float>(value) * (1.f / 1023.f);  // filter closure (SID)
       break;
     case CHIP:
-      p_.chip = static_cast<chiptune::Chip>(value < 0 ? 0 : (value > 4 ? 4 : value));
+      p_.chip = static_cast<chiptune::Chip>(value < 0 ? 0 : (value > 6 ? 6 : value));
       break;
     case ARP:
       p_.arp = static_cast<uint8_t>(value);
@@ -76,7 +76,7 @@ public:
 
   const char *getParameterStrValue(uint8_t index, int32_t value) const override final
   {
-    static const char *const chip[] = {"NES", "GB", "SEGA", "ATARI", "SID"};
+    static const char *const chip[] = {"NES", "GB", "SEGA", "ATARI", "SID", "PCE", "POKEY"};
     static const char *const arp[] = {"OFF", "MAJ", "MIN", "OCT", "5TH", "SUS4"};
     static const char *const sub[] = {"OFF", "-1OCT", "UNI", "BZSAW", "BZTRI"};
     static const char *const noise[] = {"OFF", "LOW", "MID", "HIGH", "METAL", "BUZZ"};
@@ -85,7 +85,7 @@ public:
 
     switch (index)
     {
-    case CHIP:  return value >= 0 && value <= 4 ? chip[value] : nullptr;
+    case CHIP:  return value >= 0 && value <= 6 ? chip[value] : nullptr;
     case ARP:   return value >= 0 && value <= 5 ? arp[value] : nullptr;
     case SUB:   return value >= 0 && value <= 4 ? sub[value] : nullptr;
     case NOISE: return value >= 0 && value <= 5 ? noise[value] : nullptr;
