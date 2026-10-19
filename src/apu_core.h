@@ -141,7 +141,7 @@ struct ApuParams {
                          //       TIA: pure / 4-bit / 5-bit / 9-bit noise. VRC6: pulse duty.
   uint8_t arp = 0;       // 0 off, 1 maj, 2 min, 3 oct, 4 5th+oct, 5 sus4
   uint8_t sub = 0;       // 0 off, 1 -12 st, 2 unison. 3/4: YM2149/5B envelope buzz (saw/tri),
-                         //   SID 3 = hard sync, 4 = ring mod, PCE 3+ = LFO FM, POKEY 3+ = high-pass
+                         //   SID 3 = hard sync, 4 = ring mod, PCE 3 = LFO FM, POKEY 3 = high-pass (4 = unison on both)
   uint8_t noise = 0;     // 0 off, 1 low, 2 mid, 3 high, 4 metal, 5 buzz
   uint8_t decay = 0;     // 0 hold, 1..15 decay speed
   uint8_t interval = 0;  // voice 2 interval index, see detail::kIntervals
@@ -360,8 +360,8 @@ private:
   bool buzz() const { return ayLike() && p_.sub >= 3; }
   bool pokeyLike() const { return p_.chip == kChipPOKEY || p_.chip == kChipTIA; }
   uint8_t pokeyMode() const { return p_.chip == kChipTIA ? detail::kTiaMode[p_.duty] : p_.duty; }
-  bool hpMode() const { return p_.chip == kChipPOKEY && p_.sub >= 3; }
-  bool pceLfo() const { return p_.chip == kChipPCE && p_.sub >= 3; }
+  bool hpMode() const { return p_.chip == kChipPOKEY && p_.sub == 3; }
+  bool pceLfo() const { return p_.chip == kChipPCE && p_.sub == 3; }
   float detuneEff() const { return p_.detune + shapeMod_ * 8.f; }
   float lfoDepth() const {
     const float d = detuneEff() * (1.f / 16.f);
