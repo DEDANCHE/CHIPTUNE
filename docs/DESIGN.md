@@ -43,7 +43,7 @@ note (w0, velocity) ─► Apu::control tick @240 Hz: envelope, 60 Hz arp, vibra
 
 | # | Name | Meaning |
 |---|------|---------|
-| 0 (knob A) | DUTY | pulse duty zone 12.5/25/50/75 %; GB / PCE: wave table; SID: waveform; POKEY: distortion (pure / 4-bit / 5-bit / 5+4-bit poly) |
+| 0 (knob A) | PRESET | 0..32, loads `chiptune::preset(i)` (all parameters, including the duty field: pulse duty zone 12.5/25/50/75 %; GB / PCE: wave table; SID: waveform; POKEY / TIA: distortion) |
 | 1 (knob B) | DETN/FLT | pulse 2 detune, 0..16 register steps; SID: filter cutoff (open..closed); SHAPE_LFO adds to it |
 | 2 | CHIP | NES / GB / SEGA (SN76489) / ATARI (YM2149) / SID (C64) / PCE (HuC6280) / POKEY / VRC6 / 5B / TIA |
 | 3 | ARP | off, maj, min, oct, 5th+oct, sus4 |
@@ -63,10 +63,10 @@ note (w0, velocity) ─► Apu::control tick @240 Hz: envelope, 60 Hz arp, vibra
 | SEGA | SN76489 | event-driven | 10-bit dividers, 2 dB attenuation, white / periodic noise (setting 5 is pitched by the note) |
 | ATARI | YM2149 (Atari ST) | event-driven | 12-bit dividers, 3 dB steps, 17-bit LFSR noise, envelope "buzzer" via `SUB` = BZSAW / BZTRI, tuned to the note |
 | PCE | HuC6280 (PC Engine) | event-driven | Three 32-sample 5-bit wave channels (sine / saw / 25 % pulse / triangle; channel 2 uses the next table), 15-bit LFSR noise, 3 dB volume steps |
-| POKEY | Atari 8-bit POKEY | event-driven | 8-bit dividers on the 64 kHz base clock, 16-bit pair on 1.79 MHz for low notes, distortion via `DUTY`; voice 3 stays pure; 17-bit poly noise |
-| VRC6 | Konami VRC6 | event-driven | 2 pulses with 8 duty steps (4 zones via `DUTY`), 7-step saw as the `SUB` channel, no noise |
+| POKEY | Atari 8-bit POKEY | event-driven | 8-bit dividers on the 64 kHz base clock, 16-bit pair on 1.79 MHz for low notes, distortion via the preset duty field; voice 3 stays pure; 17-bit poly noise |
+| VRC6 | Konami VRC6 | event-driven | 2 pulses with 8 duty steps (4 zones via the preset duty field), 7-step saw as the `SUB` channel, no noise |
 | 5B | Sunsoft 5B (YM2149 variant) | event-driven | Same core as ATARI at the 1.79 MHz NES clock, including the envelope buzzer |
-| TIA | Atari 2600 TIA | event-driven | 5-bit divider on a 114-clock base, 4-bit / 5-bit / 9-bit poly distortion via `DUTY`; registers above 32 fold up by octaves, so notes below about 1 kHz are coarsely tuned |
+| TIA | Atari 2600 TIA | event-driven | 5-bit divider on a 114-clock base, 4-bit / 5-bit / 9-bit poly distortion via the preset duty field; registers above 32 fold up by octaves, so notes below about 1 kHz are coarsely tuned |
 | SID | MOS 6581/8580 (C64) | continuous | Saw / triangle / pulse (auto PWM) voices, 23-bit LFSR noise, ADSR-style envelope, state-variable low-pass |
 
 C64 and SID are the same chip, and the Atari ST uses the YM2149, so five models cover the first four names requested; PC Engine and POKEY were added afterwards.
@@ -94,7 +94,7 @@ The 8-bit noise and combined waveforms are approximations rather than the real D
 
 - `SHAPE_LFO`: SID filter cutoff += 0.5 × LFO; on event chips it modulates pulse 2 detune by up to ±8 register steps.
 - Pitch bend: ±2 semitones, applied in `process`.
-- `src/presets.h` holds 33 reference presets (`chiptune::preset(i)`); the unit API has no preset slot, so [docs/PRESETS.md](PRESETS.md) lists the values to dial in.
+- `src/presets.h` holds 33 reference presets (`chiptune::preset(i)`); knob A (`PRESET`) selects one, see [docs/PRESETS.md](PRESETS.md).
 
 ## Other APUs to add later (same primitives)
 

@@ -3,13 +3,13 @@
  *  File: osc.h
  *
  *  CHIPTUNE APU oscillator: adapts chiptune::Apu to the NTS-1 mkII Processor API.
- *  Written against the dummy-osc template (processor.h / unit_osc.h); not yet
- *  built with the SDK toolchain.
+ *  Written against the dummy-osc template (processor.h / unit_osc.h).
  */
 #include "processor.h"
 #include "unit_osc.h"
 
 #include "apu_core.h"
+#include "presets.h"
 
 class Osc : public Processor
 {
@@ -18,7 +18,7 @@ public:
 
   enum
   {
-    DUTY = 0U,
+    PRESET = 0U,
     DETN,
     CHIP,
     ARP,
@@ -34,10 +34,18 @@ public:
   void setParameter(uint8_t index, int32_t value) override final
   {
     ensureInit();
+    // A preset overwrites the whole parameter set. The SDK re-sends every saved value on
+    // load, so a value only counts as an edit when it differs from the last one seen.
+    if (index < NUM_PARAMS)
+    {
+      const bool changed = value != seen_[index];
+      seen_[index] = value;
+      if (!changed) return;
+    }
     switch (index)
     {
-    case DUTY:
-      p_.duty = static_cast<uint8_t>(value >> 8); // 0..1023 -> 0..3 (POKEY: distortion mode)
+    case PRESET:
+      p_ = chiptune::preset(value < 0 ? 0 : (value >= chiptune::kNumPresets ? chiptune::kNumPresets - 1 : value));
       break;
     case DETN:
       p_.detune = static_cast<float>(value) * (16.f / 1023.f); // register steps (non-SID)
@@ -100,6 +108,7 @@ public:
 
     switch (index)
     {
+    case PRESET: return value >= 0 && value < chiptune::kNumPresets ? chiptune::presetName(value) : nullptr;
     case CHIP:  return value >= 0 && value <= 9 ? chip[value] : nullptr;
     case ARP:   return value >= 0 && value <= 5 ? arp[value] : nullptr;
     case SUB:   return value >= 0 && value <= 4 ? sub[value] : nullptr;
@@ -154,12 +163,16 @@ private:
     if (ready_) return;
     ready_ = true;
     p_ = chiptune::ApuParams();
+    for (int i = 0; i < NUM_PARAMS; ++i) seen_[i] = 0;
+    seen_[PRESET] = -1; // so the default preset 0 is applied
+    seen_[QUANT] = 1;   // header default
     apu_.init(static_cast<float>(getSampleRate()));
   }
 
   chiptune::Apu apu_;
   chiptune::ApuParams p_;
   float w0_;
+  int32_t seen_[NUM_PARAMS];
   float bend_; // -1..1, zero from BSS so a bend before the first render survives
   bool ready_;
 };
