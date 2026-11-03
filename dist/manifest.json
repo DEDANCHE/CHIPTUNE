@@ -1,11 +1,11 @@
 {
-  "package": "chipapu.nts1mkiiunit",
-  "packageBytes": 37688,
-  "loadBytes": 43124,
-  "headroomBytes": 6028,
-  "sha256": "e48c1f7892d9cb7781b48bf35b51bd1456ca3cda0aa9b0582fd8b6e1dda7b0b8",
-  "callbacks": 17,
-  "version": "2.1.0",
-  "cmsisRevision": "f25cf2c15304ad872a5b9761651d3f57d6202906",
-  "compiler": "arm-none-eabi-gcc.exe (Arm GNU Toolchain 14.2.Rel1 (Build arm-14.52)) 14.2.1 20241119"
+    "package":  "chipapu.nts1mkiiunit",
+    "packageBytes":  37844,
+    "loadBytes":  43284,
+    "headroomBytes":  5868,
+    "sha256":  "0389182118131b4b8670a8ed99eebdea673f3dd27d9660869dc433091f9db367",
+    "callbacks":  17,
+    "version":  "2.1.0",
+    "cmsisRevision":  "f25cf2c15304ad872a5b9761651d3f57d6202906",
+    "compiler":  "arm-none-eabi-gcc.exe (Arm GNU Toolchain 14.2.Rel1 (Build arm-14.52)) 14.2.1 20241119"
 }

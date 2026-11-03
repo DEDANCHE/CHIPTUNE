@@ -12,6 +12,7 @@ int main(){
   check(unit_init(&bad)==k_unit_err_undef,"reject null context");
   bad=desc;bad.samplerate=44100;check(unit_init(&bad)==k_unit_err_samplerate,"reject unsupported sample rate");
   check(unit_init(&desc)==0,"initialize real callback adapter");
+  check(unit_header.dev_id==0x44443732U,"header contains DD72 developer ID");
   for(int p=0;p<chiptune::kNumPresets;++p){
     unit_set_param_value(Osc::PRESET,p);
     check(unit_get_param_str_value(Osc::PRESET,p)!=nullptr,"all presets have runtime labels");
@@ -36,5 +37,7 @@ int main(){
   check(silent,"all-note-off cancels pending onset");
   unit_note_on(57,127);unit_render(nullptr,actual,1024);unit_suspend();unit_resume();unit_render(nullptr,actual,1024);
   silent=true;for(float x:actual)silent &= x==0;check(silent,"suspend/resume remains silent until next note");
+  unit_reset();unit_note_on(57,127);unit_render(nullptr,actual,1024);unit_note_on(60,127);unit_note_off(57);unit_render(nullptr,actual,1024);
+  bool audible=false;for(float x:actual)audible |= std::fabs(x)>0.01f;check(audible,"legato: releasing previous note does not silence current note");
   unit_teardown();return failures?1:0;
 }

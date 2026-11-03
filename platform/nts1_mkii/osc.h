@@ -241,8 +241,8 @@ public:
     activeNote_ = note;
     polyPressure_ = 0;
   }
-  void noteOff(uint8_t) { notePending_ = tickPending_ = false; polyPressure_ = 0; apu_.noteOff(); }
-  void allNoteOff() { noteOff(0); }
+  void noteOff(uint8_t note) { if (note != activeNote_) return; notePending_ = tickPending_ = false; polyPressure_ = 0; apu_.noteOff(); }
+  void allNoteOff() { notePending_ = tickPending_ = false; polyPressure_ = 0; apu_.noteOff(); }
 
   void setTempo(float bpm) { ensureInit(); apu_.setTempo(bpm); }
   void tempo4ppqnTick(uint32_t counter) {
@@ -263,7 +263,7 @@ public:
   {
     ensureInit();
     commitParameters();
-    apu_.setFrequency(w0_ * static_cast<float>(getSampleRate()) * std::pow(2.f, bend_ * (2.f / 12.f)));
+    apu_.setFrequency(w0_ * static_cast<float>(getSampleRate()) * (bend_ == 0.f ? 1.f : std::exp2(bend_ * (1.f / 6.f))));
     const float pressure = (channelPressure_ > polyPressure_ ? channelPressure_ : polyPressure_) * (1.f / 127.f);
     apu_.setShapeMod(shapeLfo_ + (p_.chip == chiptune::kChipSID ? -pressure : pressure));
     if (notePending_) {
@@ -326,14 +326,14 @@ private:
 
   chiptune::Apu apu_;
   chiptune::ApuParams p_;
-  float w0_;
-  int32_t pending_[NUM_PARAMS];
-  uint16_t pendingMask_;
-  int presetIndex_;
-  float bend_; // -1..1, zero from BSS so a bend before the first render survives
-  bool ready_;
-  bool notePending_;
-  uint8_t pendingVelocity_;
+  float w0_ = 0.f;
+  int32_t pending_[NUM_PARAMS] = {};
+  volatile uint16_t pendingMask_ = 0;
+  int presetIndex_ = 0;
+  float bend_ = 0.f; // -1..1, zero from BSS so a bend before the first render survives
+  bool ready_ = false;
+  bool notePending_ = false;
+  uint8_t pendingVelocity_ = 0;
   bool tickPending_ = false;
   uint32_t pendingTick_ = 0;
   uint8_t activeNote_ = 0, channelPressure_ = 0, polyPressure_ = 0;

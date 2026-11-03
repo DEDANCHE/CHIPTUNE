@@ -5,7 +5,11 @@ Push-Location $repo
 try {
   & "$PSScriptRoot/test.ps1"
   & "$PSScriptRoot/build_unit.ps1" -Sdk $Sdk -ToolchainBin $ToolchainBin
-  node tools/check_unit.cjs build/unit/chipapu.nts1mkiiunit build/unit/manifest.json
+  if (Get-Command node -ErrorAction SilentlyContinue) {
+    node tools/check_unit.cjs build/unit/chipapu.nts1mkiiunit build/unit/manifest.json
+  } else {
+    python tools/check_unit.py build/unit/chipapu.nts1mkiiunit build/unit/manifest.json
+  }
   if($LASTEXITCODE){throw 'Firmware validation failed; dist was not updated'}
   Copy-Item -LiteralPath build/unit/chipapu.nts1mkiiunit -Destination dist/chipapu.nts1mkiiunit -Force
   Copy-Item -LiteralPath build/unit/manifest.json -Destination dist/manifest.json -Force

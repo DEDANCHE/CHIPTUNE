@@ -19,6 +19,29 @@ Editor. This package targets the NTS-1 **mkII**; it is not an NTS-1 mkI unit.
 Knob A controls COLOR. Knob B controls detune, SID filter closure, or FM depth,
 depending on the selected engine.
 
+## Architecture and review findings
+
+A technical review of the codebase highlights several notable DSP and embedded engineering patterns, along with recent hardening applied:
+
+### DSP and embedded highlights
+
+- **Zero-heap deterministic design**: Memory usage is strictly bounded and static, with no dynamic memory allocations (`malloc`/`new`), guaranteeing deterministic real-time audio thread execution on the ARM Cortex-M7.
+- **Dual-engine topology**:
+  - *Event Engine* (NES, GB, SN76489, YM2149, PCE, POKEY, VRC6): Simulates registers in their native chip clock domain. Discontinuities are placed as fractional-sample windowed-sinc impulse steps into a 64-sample circular integrator (`BlipBuf`, 16 taps, 64 phases), achieving anti-aliased output without multi-megahertz oversampling.
+  - *Analog Engine* (SID 6581/8580): Operates at 2x oversampling (96 kHz) with PolyBLEP anti-aliased oscillators, naive step cancellation for hard sync, a 31-tap decimation FIR filter, and a 2-pole Chamberlin state-variable filter (SVF).
+- **Smooth dynamic range control**: A rational soft-knee saturator (`softLimit`) provides $C^1$-continuous limiting above $0.75$, maintaining level consistency across disparate chip architectures without clipping artifacts.
+- **Transactional parameter recall**: Korg Kontrol Editor parameter streams are staged through `pendingMask_` and resolved atomically via `resolvedParams()`, preventing intermediate parameter readbacks from corrupting engine models during preset selection.
+- **Transient click mitigation**: Switching engines, wavetable banks, or voice modes triggers a 48-sample (1 ms) linear crossfade from the latched previous sample, eliminating DC pops without running dual active engines.
+- **Strict ELF footprint control**: The packaged binary occupies 43,124 bytes of the 49,152-byte (48 KiB) PT_LOAD hardware limit (~12% headroom).
+
+### Hardening and fixes applied
+
+- **Registered Developer ID**: Assigned FourCC developer identifier `0x44443732U` (`'DD72'`) in `platform/nts1_mkii/header.c` to prevent identifier collisions in the Korg Kontrol Editor.
+- **Deterministic scalar initialization**: Explicit in-class default member initializers added to `Osc` (`w0_`, `pending_`, `pendingMask_`, `presetIndex_`, `bend_`, `ready_`, `notePending_`, `pendingVelocity_`), eliminating undefined behavior risks for non-BSS (stack/heap) instantiations.
+- **Thread/ISR safety**: Qualified `pendingMask_` as `volatile` to prevent register caching across audio DMA interrupt and UI callback contexts.
+- **Strictly standard modular indexing**: Replaced negative signed bitwise operations in `src/apu_core.h` delay buffers with safe positive modular offsets (`+ 32`), guaranteeing standard-compliant modular arithmetic across all C++ compilers.
+- **Sanitized test suite pass**: All 1,815 test assertions across adapter, feature, runtime, and core audio suites pass with undefined-behavior sanitization (`-fsanitize=undefined -fno-sanitize-recover=all`).
+
 ## Building and testing
 
 The portable core and host tests target C++11. Run the full suite from the

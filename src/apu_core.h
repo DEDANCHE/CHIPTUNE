@@ -878,9 +878,9 @@ private:
   void updatePeriods() {
     const float arpSemi = static_cast<float>(detail::kArp[p_.arp][arpStep_]);
     const float semi2 = static_cast<float>(detail::kIntervals[p_.interval]);
-    const float f1 = freq_ * std::pow(2.f, (arpSemi + vibValue_ + pitchEnv_) / 12.f);
-    const float f2 = freq_ * std::pow(2.f, (arpSemi + semi2 + vibValue_ + pitchEnv_) / 12.f);
-    const float fs = freq_ * std::pow(2.f, (vibValue_ + pitchEnv_ + (p_.sub == 1 ? -12.f : 0.f)) / 12.f);
+    const float f1 = freq_ * std::exp2((arpSemi + vibValue_ + pitchEnv_) / 12.f);
+    const float f2 = freq_ * std::exp2((arpSemi + semi2 + vibValue_ + pitchEnv_) / 12.f);
+    const float fs = freq_ * std::exp2((vibValue_ + pitchEnv_ + (p_.sub == 1 ? -12.f : 0.f)) / 12.f);
 
     if (p_.chip == kChipSID) {
       sv_[0].inc = sidInc(f1);
@@ -943,7 +943,7 @@ private:
     }
   }
 
-  float noiseScale() const { return p_.voice == 4 ? std::pow(2.f, -detuneEff() * 0.25f) : 1.f; }
+  float noiseScale() const { return p_.voice == 4 ? std::exp2(-detuneEff() * 0.25f) : 1.f; }
   float noisePeriod() const {
     const float period = spec_.noiseTable[detail::kNoiseIdx[p_.chip][p_.noise]] * noiseScale();
     return period < 4.f ? 4.f : period;
@@ -1233,14 +1233,14 @@ private:
       }
       if (p_.noise && gainNoise() > 0.f) m += sidNoiseVoice(sv_[3]) * gainNoise();
       sidDryHist_[sidSyncPos_] = m;
-      m = sidDryHist_[(sidSyncPos_ - 8) & 31] + sidSyncBuf_[sidSyncPos_];
+      m = sidDryHist_[(sidSyncPos_ + 32 - 8) & 31] + sidSyncBuf_[sidSyncPos_];
       sidSyncBuf_[sidSyncPos_] = 0.f;
       sidSyncPos_ = (sidSyncPos_ + 1) & 31;
       sidHistPos_ = (sidHistPos_ + 1) & 31;
       sidHist_[sidHistPos_] = m;
     }
     float mix = 0.f;
-    for (int k = 0; k < 31; ++k) mix += sidFir_[k] * sidHist_[(sidHistPos_ - k) & 31];
+    for (int k = 0; k < 31; ++k) mix += sidFir_[k] * sidHist_[(sidHistPos_ + 32 - k) & 31];
     mix *= 0.17f * sidEnv_ * vol_ * (1.f / 15.f);
 
     sidF_ += (sidFTarget_ - sidF_) * 0.002f;
