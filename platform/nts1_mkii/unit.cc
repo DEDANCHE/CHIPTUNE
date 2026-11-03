@@ -36,6 +36,9 @@
  *
  *  NTS-1 mkII oscillator unit interface
  *
+ *  CHIPTUNE oscillator unit implementation.
+ *  Copyright (C) 2026 DEDANCHE.
+ *  Licensed under the GNU General Public License v3.0 (see LICENSE).
  */
 
 #include "osc.h"

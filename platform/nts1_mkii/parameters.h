@@ -1,4 +1,6 @@
 #pragma once
+// CHIPTUNE parameter definitions. Copyright (C) 2026 DEDANCHE.
+// Licensed under the GNU General Public License v3.0 (see LICENSE).
 // C/C++ shared control contract: symbol, maximum, default, display type, label.
 #define CHIPAPU_PARAMETERS(X) \
   X(COLOR, 1023, 384, k_unit_param_type_none, "COLOR") \

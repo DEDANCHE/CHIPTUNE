@@ -1,4 +1,6 @@
 #pragma once
+// CHIPTUNE APU core. Copyright (C) 2026 DEDANCHE.
+// Licensed under the GNU General Public License v3.0 (see LICENSE).
 // Chiptune APU core. Two engines share one voice front-end (note, arp, vibrato):
 //   * event engine  (NES, GB, SN76489, YM2149, HuC6280, POKEY, VRC6, 5B, TIA, N163, FDS, Paula): channels run in the chip clock
 //     domain; each output change is a band-limited step (blip-style).

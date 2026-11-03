@@ -1,4 +1,6 @@
 #pragma once
+// CHIPTUNE NTS-1 mkII oscillator adapter. Copyright (C) 2026 DEDANCHE.
+// Licensed under the GNU General Public License v3.0 (see LICENSE).
 /*
  *  File: osc.h
  *

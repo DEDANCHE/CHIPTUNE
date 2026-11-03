@@ -1,4 +1,6 @@
 #pragma once
+// CHIPTUNE presets. Copyright (C) 2026 DEDANCHE.
+// Licensed under the GNU General Public License v3.0 (see LICENSE).
 // Stable preset IDs. All sound-defining defaults are explicit in the table.
 #include "apu_core.h"
 namespace chiptune {
