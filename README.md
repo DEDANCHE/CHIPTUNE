@@ -1,7 +1,7 @@
 # CHIPTUNE
 
 An APU-style chiptune oscillator for the **Korg NTS-1 digital kit mkII**, built with
-the logue SDK. Version 2.0.2 includes eight primary chip families and explicit
+the logue SDK. Version 2.1.0 includes eight primary chip families and explicit
 compatibility entries for legacy engines. Hardware listening and CPU profiling
 remain pending.
 
@@ -21,19 +21,18 @@ depending on the selected engine.
 
 ## Building and testing
 
-The portable core and host tests target C++11. Run these PowerShell commands from
-the repository root with Zig available on PATH:
+The portable core and host tests target C++11. Run the full suite from the
+repository root with Zig available on PATH:
 
 ```powershell
-New-Item -ItemType Directory -Force build/host, build/audio | Out-Null
-zig c++ -std=c++11 -Wall -Wextra -O2 tests/core_audio_test.cpp -o build/host/core_audio_test.exe
-& ./build/host/core_audio_test.exe build/audio
-zig c++ -std=c++11 -Wall -Wextra -O2 -Itests/sdk_stubs -Isrc tests/adapter_test.cpp -o build/host/adapter_test.exe
-& ./build/host/adapter_test.exe
+powershell -File tools/test.ps1
 ```
 
 The core suite tests synthesis and writes WAV files. The adapter suite uses SDK
 stubs and tests parameter recall, note timing, engine changes, and reset behavior.
+Feature tests cover all voice/chip recall combinations, pressure and new articulations;
+runtime tests exercise the actual unit callbacks. See the [development guide](docs/development.md)
+for one-command releases, audition WAVs, host timing, and instrumented hardware builds.
 See [validation results](docs/oscillators.md#validation) for test counts, compiler
 versions, and package size. Generated files stay under the ignored `build/` folder.
 
@@ -56,13 +55,15 @@ For a manual or SDK Docker build:
 1. Copy `logue-sdk/platform/nts-1_mkii/dummy-osc` into a new project directory,
    retaining its `Makefile` and `config.mk`.
 2. Replace `header.c`, `osc.h`, and `unit.cc` with the files from
-   `platform/nts1_mkii/`. Copy `src/apu_core.h` and `src/presets.h` alongside them.
+   `platform/nts1_mkii/`, including `parameters.h` and `profiling.h`. Copy
+   `src/apu_core.h` and `src/presets.h` alongside them.
 3. Set the project name in `config.mk`, then run `build nts-1_mkii/<project>`
    in the SDK Docker environment.
 4. Load the resulting unit with the Korg Kontrol Editor.
 
-The custom `unit.cc` is required for parameter recall. When preparing a release,
-copy the tested package from `build/unit/` to `dist/`.
+The custom `unit.cc` is required for parameter recall. Prepare a checked release with
+`powershell -File tools/release.ps1 -Sdk C:\path\to\logue-sdk`; it updates `dist/`
+only after tests, the ARM build, ELF memory limits and callback exports pass.
 
 ## Migration
 

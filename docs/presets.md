@@ -1,10 +1,11 @@
 # Revision 2 presets
 
-The PRESET menu contains 74 entries. Original indices 0..59 are reserved; fourteen
-new patches are appended at 60..73. Names and several voicings have changed deliberately.
+The PRESET menu contains 77 entries. IDs 0..73 remain stable; version 2.1.0 appends
+slow/deep SID PWM, a NES kick, and a PCE tom at 74..76.
 Version 2.0.2 repairs preset 21 into a triangle envelope and corrects misleading names.
-All other preset audio definitions remain unchanged by this preset refinement pass.
-Knob A is COLOR; knob B is detune, SID filter closure, or FM depth.
+The original 74 defaults were sample-identical to v2.0.2 in a 220 Hz, 0.5-second
+render comparison after the data refactor. Knob A is COLOR; knob B is detune, SID
+filter closure, FM depth, solo vibrato, or noise rate according to the active source.
 
 See [Oscillators](oscillators.md) for the control map, migration rules,
 engine changes and validation status. Vibrato remains stored in the preset.
@@ -103,3 +104,6 @@ and survives saving and recall. See the revision notes for migrating v2.0.0 lega
 | 71 | NES MAJ 16TH | NES |
 | 72 | PCE MIN 16TH | PCE/WT |
 | 73 | X FDS TABLE | Experimental FDS |
+| 74 | SID SLOW DEEP | SID; fixed 0.25 Hz, depth 0.35 PWM mode |
+| 75 | NES KICK | Isolated triangle; 24-semitone falling pitch envelope |
+| 76 | PCE TOM | Isolated wave; 12-semitone falling pitch envelope |

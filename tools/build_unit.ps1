@@ -9,7 +9,8 @@
 param(
   [string]$Sdk = $env:LOGUE_SDK,
   [string]$ToolchainBin,
-  [string]$Project = "chipapu"
+  [string]$Project = "chipapu",
+  [switch]$Profile
 )
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot
@@ -32,18 +33,27 @@ if (-not (Get-Command sh.exe -ErrorAction SilentlyContinue)) {
 }
 
 $cmsis = Join-Path $Sdk "platform\ext\CMSIS"
+$cmsisRevision = 'f25cf2c15304ad872a5b9761651d3f57d6202906'
 if (-not (Test-Path "$cmsis\CMSIS\Include\arm_math.h")) {
   $cmsis = Join-Path $repo "build\CMSIS"
 }
 if (-not (Test-Path "$cmsis\CMSIS\Include\arm_math.h")) {
-  git clone --depth 1 https://github.com/ARM-software/CMSIS.git $cmsis
+  git init $cmsis
+  if ($LASTEXITCODE) { throw 'CMSIS initialization failed' }
+  git -C $cmsis fetch --depth 1 https://github.com/ARM-software/CMSIS.git $cmsisRevision
+  if ($LASTEXITCODE) { throw 'Pinned CMSIS fetch failed' }
+  git -C $cmsis checkout --detach FETCH_HEAD
+  if ($LASTEXITCODE) { throw 'Pinned CMSIS checkout failed' }
 }
+$actualCmsisRevision = git -C $cmsis rev-parse HEAD
+if ($LASTEXITCODE -or $actualCmsisRevision.Trim() -ne $cmsisRevision) { throw "CMSIS revision must be $cmsisRevision" }
 
 $proj = Join-Path $repo "build\unit"
 New-Item -ItemType Directory -Force $proj | Out-Null
 Copy-Item "$repo\platform\nts1_mkii\unit.cc", "$plat\dummy-osc\Makefile" $proj -Force
 (Get-Content "$plat\dummy-osc\config.mk" -Raw).Replace("PROJECT := dummy_osc", "PROJECT := $Project") |
   Set-Content "$proj\config.mk" -NoNewline
+if ($Profile) { Add-Content "$proj\config.mk" "`nUDEFS += -DCHIPAPU_PROFILE" }
 # The SDK makefile has no header dependencies, so always rebuild from scratch.
 $buildDir = [IO.Path]::GetFullPath((Join-Path $proj "build"))
 $projectDir = [IO.Path]::GetFullPath($proj)
@@ -51,7 +61,7 @@ if ((Split-Path $buildDir -Parent) -ne $projectDir) { throw "Build directory is 
 if (Test-Path -LiteralPath $buildDir) { Remove-Item -LiteralPath $buildDir -Recurse -Force }
 Get-ChildItem -LiteralPath $projectDir -Filter "*.nts1mkiiunit" -File |
   ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
-Copy-Item "$repo\platform\nts1_mkii\header.c", "$repo\platform\nts1_mkii\osc.h", "$repo\src\apu_core.h", "$repo\src\presets.h" $proj -Force
+Copy-Item "$repo\platform\nts1_mkii\profiling.h", "$repo\platform\nts1_mkii\parameters.h", "$repo\platform\nts1_mkii\header.c", "$repo\platform\nts1_mkii\osc.h", "$repo\src\apu_core.h", "$repo\src\presets.h" $proj -Force
 
 function Fwd($p) { $p -replace '\\', '/' }
 Push-Location $proj
