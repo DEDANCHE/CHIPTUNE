@@ -1,5 +1,9 @@
 # Design exploration: APU-style oscillator for NTS-1 mkII
 
+Historical design and measurements for revision 1. The current lineup, parameter layout,
+engine changes, migration requirements and unverified status are documented in
+[Oscillator revision 2](OSCILLATORS_V2.md). The tables and measurements below predate that revision.
+
 ## Platform constraints (from the logue SDK `nts-1_mkii` README)
 
 - Cortex-M7 (STM32H725), hard-float; units are ELF shared objects built with gcc-arm-none-eabi 10.3.

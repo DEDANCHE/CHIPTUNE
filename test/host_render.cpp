@@ -82,6 +82,141 @@ int main(int argc, char **argv) {
   ApuParams p;
 
   {
+    // Musical tuning must preserve low fundamentals beyond original register limits.
+    const Chip chips[] = {kChipNES, kChipGB, kChipPSG, kChipAY, kChipTIA};
+    for (Chip chip : chips) {
+      ApuParams q;
+      q.chip = chip;
+      q.voice = 1;
+      q.duty = chip == kChipTIA ? 0 : 2;
+      q.quantize = false;
+      const auto s = note(q, 20.f, 1.f, 1.f);
+      const double fundamental = mag(s, 4800, 48000, 20.0);
+      check(fundamental > 0.03, "musical mode preserves 20 Hz fundamental", fundamental);
+    }
+  }
+
+  {
+    // Muted channels must contribute nothing, even when their old state is nonzero.
+    ApuParams a, b;
+    a.voice = b.voice = 1;
+    b.pulse2Level = 0.f;
+    b.waveLevel = b.noiseLevel = 0.f;
+    const auto sa = note(a, 220.f, 0.5f, 0.5f), sb = note(b, 220.f, 0.5f, 0.5f);
+    double difference = 0;
+    for (size_t i = 0; i < sa.size(); ++i) difference += std::fabs(sa[i] - sb[i]);
+    check(difference == 0, "P1 solo excludes all other channels", difference);
+
+    ApuParams wave;
+    wave.chip = kChipGB;
+    wave.voice = 3;
+    wave.sub = 2;
+    const auto full = note(wave, 220.f, 0.5f, 0.5f);
+    wave.waveLevel = 0.f;
+    const auto muted = note(wave, 220.f, 0.5f, 0.5f);
+    check(peakAbs(full, 4800, 24000) > 0.03 && peakAbs(muted, 0, 24000) == 0.f,
+          "GB wave solo and independent level", peakAbs(muted, 0, 24000));
+  }
+
+  {
+    // FM's zero-depth path must equal the carrier-only wave, not a weak FM tone.
+    ApuParams a, b;
+    a.chip = b.chip = kChipPCE;
+    a.voice = b.voice = 1;
+    a.quantize = b.quantize = false;
+    b.sub = 3;
+    const auto sa = note(a, 220.f, 0.5f, 0.5f), sb = note(b, 220.f, 0.5f, 0.5f);
+    double difference = 0;
+    for (size_t i = 0; i < sa.size(); ++i) difference = std::fmax(difference, std::fabs(sa[i] - sb[i]));
+    check(difference < 1e-6, "PCE zero FM depth is a pure carrier", difference);
+  }
+
+  {
+    // Tempo divisions must respond to tempo; legacy tracker speed must not.
+    for (int synced = 0; synced < 2; ++synced) {
+      Apu a, b;
+      a.init(48000.f); b.init(48000.f);
+      ApuParams q;
+      q.arp = 1; q.arpRate = synced ? 3 : 0; q.quantize = false;
+      a.setParams(q); b.setParams(q);
+      a.setTempo(60.f); b.setTempo(120.f);
+      a.noteOn(127); b.noteOn(127);
+      double difference = 0;
+      for (int i = 0; i < 24000; ++i) difference += std::fabs(a.render() - b.render());
+      check(synced ? difference > 1 : difference == 0,
+            synced ? "tempo-synced arp follows BPM" : "tracker arp ignores BPM", difference);
+    }
+  }
+
+  {
+    // Changing FDS depth must not strand the carrier on its stopped-period sentinel.
+    Apu apu;
+    apu.init(48000.f);
+    ApuParams q;
+    q.chip = kChipFDS; q.duty = 3; q.detune = 16.f; q.interval = 4;
+    apu.setParams(q); apu.noteOn(127);
+    bool finite = true;
+    float finalPeak = 0.f;
+    for (int block = 0; block < 4; ++block) {
+      q.detune = block == 1 ? 0.f : 16.f;
+      apu.setParams(q);
+      for (int i = 0; i < 12000; ++i) {
+        const float y = apu.render();
+        finite = finite && std::isfinite(y) && std::fabs(y) <= 1.f;
+        if (block == 3 && i >= 6000) finalPeak = std::fmax(finalPeak, std::fabs(y));
+      }
+    }
+    check(finite && finalPeak > 0.03f, "FDS modulation stops and resumes safely", finalPeak);
+  }
+
+  {
+    // Exercise sync's wrap/reset/pulse-edge correction for every waveform at high pitches.
+    bool finite = true;
+    for (int wave = 0; wave < 4; ++wave) {
+      for (float hz : {3150.f, 12000.f}) {
+        ApuParams q;
+        q.chip = kChipSID; q.duty = static_cast<uint8_t>(wave); q.sub = 3;
+        const auto s = note(q, hz, 0.1f, 0.1f);
+        for (float y : s) finite = finite && std::isfinite(y) && std::fabs(y) <= 1.f;
+      }
+    }
+    check(finite, "SID sync correction remains finite at high pitches", finite);
+  }
+
+  {
+    // The NES triangle / GB wave layer must follow velocity and decay too.
+    const Chip chips[] = {kChipNES, kChipGB};
+    for (Chip chip : chips) {
+      ApuParams q;
+      q.chip = chip;
+      q.sub = 1;
+      q.decay = 1;
+      const auto decayed = note(q, 220.f, 1.f, 1.f);
+      check(peakAbs(decayed, 24000, 48000) < 1e-3,
+            chip == kChipNES ? "NES sub follows decay" : "GB wave follows decay",
+            peakAbs(decayed, 24000, 48000));
+      q.decay = 0;
+      Apu loud, quiet;
+      loud.init(48000.f);
+      quiet.init(48000.f);
+      loud.setParams(q);
+      quiet.setParams(q);
+      loud.setFrequency(220.f);
+      quiet.setFrequency(220.f);
+      loud.noteOn(127);
+      quiet.noteOn(1);
+      double loudEnergy = 0, quietEnergy = 0;
+      for (int i = 0; i < 24000; ++i) {
+        const float a = loud.render(), b = quiet.render();
+        if (i >= 4800) { loudEnergy += a * a; quietEnergy += b * b; }
+      }
+      check(quietEnergy < loudEnergy * 0.05,
+            chip == kChipNES ? "NES sub follows velocity" : "GB wave follows velocity",
+            quietEnergy / loudEnergy);
+    }
+  }
+
+  {
     // 50% pulse at 3150 Hz: 9th harmonic (28350 Hz) folds to 19650 Hz.
     // A naive pulse puts it near -19 dB re fundamental.
     ApuParams q;
@@ -418,6 +553,8 @@ int main(int argc, char **argv) {
           q.resonant = variant & 1;
           q.quantize = variant != 1;
           q.detune = variant * 5.f;
+          if (variant) applyColor(q, static_cast<uint16_t>(variant * 341));
+          q.voice = static_cast<uint8_t>(variant);
           a.setParams(q);
           a.setShapeMod(variant == 1 ? -1.f : (variant == 2 ? 1.f : 0.f));
           a.setFrequency(hz);

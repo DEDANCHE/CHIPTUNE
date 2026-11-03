@@ -31,18 +31,26 @@ if (-not (Get-Command sh.exe -ErrorAction SilentlyContinue)) {
   $env:PATH = "$gitRoot\usr\bin;$env:PATH"
 }
 
-$cmsis = Join-Path $repo "build\CMSIS"
+$cmsis = Join-Path $Sdk "platform\ext\CMSIS"
+if (-not (Test-Path "$cmsis\CMSIS\Include\arm_math.h")) {
+  $cmsis = Join-Path $repo "build\CMSIS"
+}
 if (-not (Test-Path "$cmsis\CMSIS\Include\arm_math.h")) {
   git clone --depth 1 https://github.com/ARM-software/CMSIS.git $cmsis
 }
 
 $proj = Join-Path $repo "build\unit"
 New-Item -ItemType Directory -Force $proj | Out-Null
-Copy-Item "$plat\dummy-osc\unit.cc", "$plat\dummy-osc\Makefile" $proj -Force
+Copy-Item "$repo\unit\unit.cc", "$plat\dummy-osc\Makefile" $proj -Force
 (Get-Content "$plat\dummy-osc\config.mk" -Raw).Replace("PROJECT := dummy_osc", "PROJECT := $Project") |
   Set-Content "$proj\config.mk" -NoNewline
 # The SDK makefile has no header dependencies, so always rebuild from scratch.
-Remove-Item "$proj\build", "$proj\*.nts1mkiiunit" -Recurse -Force -ErrorAction SilentlyContinue
+$buildDir = [IO.Path]::GetFullPath((Join-Path $proj "build"))
+$projectDir = [IO.Path]::GetFullPath($proj)
+if ((Split-Path $buildDir -Parent) -ne $projectDir) { throw "Build directory is outside the staged project." }
+if (Test-Path -LiteralPath $buildDir) { Remove-Item -LiteralPath $buildDir -Recurse -Force }
+Get-ChildItem -LiteralPath $projectDir -Filter "*.nts1mkiiunit" -File |
+  ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
 Copy-Item "$repo\unit\header.c", "$repo\unit\osc.h", "$repo\src\apu_core.h", "$repo\src\presets.h" $proj -Force
 
 function Fwd($p) { $p -replace '\\', '/' }
