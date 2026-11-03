@@ -1,13 +1,11 @@
-# Oscillator revision 2
+# Oscillators
 
-Built and host-tested on 2026-11-03: 309 renderer checks and 461 adapter checks passed.
-The NTS-1 mkII unit builds with ARM GCC 14.2.1 without warnings. The packaged binary is
-42,244 bytes; ELF sections are text 37,963, data 3,028 and bss 6,444 bytes.
-Listening tests and CPU profiling on an actual NTS-1 remain pending.
+Current controls and engine behavior for version 2.0.2. See [validation](#validation)
+for build results and remaining hardware checks.
 
 ## Lineup
 
-The main CHIP menu contains eight families, with their original numeric IDs unchanged:
+The CHIP menu starts with eight primary families, with their original numeric IDs unchanged:
 
 | ID | Family | COLOR | Main additions |
 |---|---|---|---|
@@ -20,18 +18,20 @@ The main CHIP menu contains eight families, with their original numeric IDs unch
 | 6 | POKEY | Four distortion zones | Distortion/noise solos and high-pass voicing |
 | 7 | VRC6 | Eight pulse widths, 1..8 high steps out of 16 | Saw-only operation and channel balance |
 
-IDs 8..12 remain reserved in the core and are accepted by the unit's callback adapter:
+Version 2.0.1 exposes IDs 8..12 as explicit compatibility entries so saved patches
+retain their engine and clock variant:
 
-- **8 (5B)** becomes the YM2149 engine's Sunsoft clock/divider variant. Select a YM 5B preset to retain that variant in a v2 patch.
+- **8 (YM 5B)** selects the YM2149 engine's Sunsoft clock/divider variant.
 - **9 (TIA)** remains an experimental engine. Its curated presets are now noise percussion, prefixed `X TIA`.
 - **10 (N163)** becomes the PCE/WT short four-bit wave bank. It is not a cycle-exact N163 emulator.
 - **11 (FDS)** remains experimental, prefixed `X FDS`, with a revised table modulator.
-- **12 (Paula)** remains reachable by the original preset IDs, prefixed `OLD PCM`. The generated-wave engine is retired from the main menu. A new signed-PCM sample instrument is deferred; it is not presented as part of this release.
+- **12 (OLD PCM)** selects the legacy generated-wave Paula model, also reachable through its original presets. A new signed-PCM sample instrument is deferred; it is not presented as part of this release.
 
-Selecting a legacy preset displays its parent family in CHIP. Replaying that same parent
-does not discard the preset's experimental model. To leave it explicitly, select a main-family
-preset or select another family first. Legacy engine IDs and preset positions are reserved,
-but the sound and raw v1 parameter layout are not guaranteed to be identical.
+CHIP saves the actual engine: 8 for YM 5B, 9 for TIA, 11 for FDS, and 12 for OLD PCM.
+WT4 uses the PCE engine (saved as 5) with COLOR selecting its four-bit bank. Selecting
+a primary family directly replaces a legacy model, even when it belongs to that family.
+The original preset ID still supplies hidden settings such as vibrato; an explicit CHIP
+override takes precedence during recall. Legacy preset positions remain unchanged.
 
 ## Ten controls
 
@@ -40,7 +40,7 @@ but the sound and raw v1 parameter layout are not guaranteed to be identical.
 | 0 | COLOR | 0..1023; chip-specific timbre |
 | 1 | DETN/FLT | 0..1023; period detune, SID filter closure, or FM depth |
 | 2 | PRESET | 0..73; original indices 0..59 retained, fourteen appended |
-| 3 | CHIP | 0..7 primary families |
+| 3 | CHIP | 0..7 primary families; 8..12 compatibility entries |
 | 4 | ARP/RATE | Six patterns for each of six rates |
 | 5 | VOICE | Original sub/special modes, solos, balance choices, pure YM envelopes |
 | 6 | NOISE | Off, low, mid, high, metal, buzz |
@@ -56,7 +56,8 @@ VOICE 0..4 preserve the original off/sub/unison/special voicings. Values 5..8 se
 P2, wave, or noise alone. PCE/FDS/SID use their main wave voice for wave-only mode;
 NES/GB/VRC6 use the triangle/wave/saw layer. Values 9..11 balance P2 at 25/50/75 percent;
 12..14 add a unison wave layer at 25/50/75 percent; 15..17 balance noise at those levels.
-Values 18/19 are pure YM envelope modes. Models without a noise or wave channel cannot
+Values 18/19 select pure YM saw/triangle envelopes independently of COLOR; layered
+buzz modes retain all eight COLOR shapes. Models without a noise or wave channel cannot
 produce that unavailable source. Four-bit GB tables remain amplitude-stepped.
 
 ARP/RATE uses `pattern + 6 * rate`. Patterns are OFF/MAJ/MIN/OCT/5TH/SUS4. Rates are
@@ -90,17 +91,38 @@ The modulation behavior was checked against the technical descriptions in
 [NESdev](https://www.nesdev.org/wiki/FDS_audio) and the independent
 [NSFPlay implementation](https://github.com/bbbradsmith/nsfplay/blob/master/xgm/devices/Sound/nes_fds.cpp).
 
-## Migration and validation
+## Migration
 
-This is a major version change (`2.0.0`). A v1 patch's slot 0 was VIB; it is COLOR now.
+Revision 2 is a major version change; the current package is `2.0.2`. A v1 patch's slot 0 was VIB; it is COLOR now.
 The old SID QUANT switch also has different meaning from the new TUNE/RES field.
 Do not replay a v1 raw parameter array as a v2 patch. Reselect its retained preset ID,
 restore intended timbre/voice edits using the new controls, and save again. Stale values
-written by the old adapter cannot be recovered automatically. Custom legacy-clock edits
-should be recreated from the corresponding YM 5B preset.
+written by the old adapter cannot be recovered automatically.
 
-Executed host regression cases cover recall order, legacy-family mapping, COLOR, voice solos,
-low-note tuning, zero-depth FM, tempo behavior, reset, release and finite output at extreme settings.
-All 770 checks passed. The rebuilt `dist/chipapu.nts1mkiiunit` contains this revision.
+Version 2.0.0 stored only the parent family for experimental engines. When loading an
+older legacy patch, reselect its actual CHIP entry (YM 5B, X TIA, X FDS, or OLD PCM)
+and save again. The old parameter array cannot distinguish a retained experimental
+engine from one deliberately replaced by its parent family.
+
+Version 2.0.2 corrects preset 21's duplicated envelope into a triangle (COLOR 256);
+preset 42 retains the saw. Names now describe sustained harmonic/FM sounds, mixed
+noise voices and gentle PWM accurately. All IDs remain unchanged. A saved patch
+that explicitly stores the old COLOR value keeps that edit; reselect preset 21 to
+load the corrected default. See [preset review](preset-review.md) for the changes
+and the remaining audition-dependent proposals.
+
+## Validation
+
+Built and host-tested on 2026-11-03: 332 core audio checks and 760 adapter checks passed.
+The NTS-1 mkII unit builds with ARM GCC 14.2.1 without warnings. The packaged binary is
+42,736 bytes; ELF sections are text 38,423, data 3,056 and bss 6,444 bytes.
+
+Executed host regression cases cover recall order and audio identity, explicit legacy
+engine selection, COLOR, voice solos, low-note tuning, zero-depth FM, tempo behavior,
+reset, release, held-note engine transitions, pitch at note attack, distinct YM envelope
+modes, and finite output at extreme settings. Both host suites pass with undefined-behavior
+sanitization. Note-on starts after the next render supplies pitch; engine changes rebuild
+channel timers without requiring a new note.
+All 1,092 checks passed. The rebuilt `dist/chipapu.nts1mkiiunit` contains this revision.
 CPU headroom, listening quality and hardware compatibility remain unmeasured on the NTS-1.
 Hardware profiling is required before increasing oversampling or promoting FDS to the main selector.

@@ -55,7 +55,7 @@ public:
       const float knob = p.chip == chiptune::kChipSID ? p.cutoff : p.detune * (1.f / 16.f);
       return static_cast<int32_t>(std::floor((knob < 0.f ? 0.f : (knob > 1.f ? 1.f : knob)) * 1023.f + 0.5f));
     }
-    case CHIP: return chiptune::primaryChip(p.chip);
+    case CHIP: return chipValue(p);
     case ARP: return p.arp + 6 * p.arpRate;
     case SUB:
       if (p.chip == chiptune::kChipAY && p.voice == 1 && p.sub >= 3) return 18 + p.sub - 3;
@@ -69,6 +69,11 @@ public:
   }
 
 private:
+  static int chipValue(const chiptune::ApuParams &p)
+  {
+    return p.chip == chiptune::kChipAY && p.ay5b ? chiptune::kChipS5B : p.chip;
+  }
+
   static int clampPreset(int value)
   {
     return value < 0 ? 0 : (value >= chiptune::kNumPresets ? chiptune::kNumPresets - 1 : value);
@@ -83,14 +88,19 @@ private:
       p.cutoff = static_cast<float>(value) * (1.f / 1023.f);  // filter closure (SID)
       break;
     case CHIP:
-      // A preset may carry an experimental model behind its primary family.
-      if (value != chiptune::primaryChip(p.chip)) {
+      // Store engine identity explicitly so a preset cannot resurrect a model
+      // that the player has replaced with its primary family.
+      if (value != chipValue(p)) {
         p.chip = static_cast<chiptune::Chip>(value);
         p.ay5b = value == chiptune::kChipS5B;
         p.waveBank = value == chiptune::kChipN163 ? 1 : 0;
         p.pulse1Level = p.pulse2Level = p.waveLevel = p.noiseLevel = 1.f;
         if (value == chiptune::kChipS5B) p.chip = chiptune::kChipAY;
-        if (value == chiptune::kChipN163) p.chip = chiptune::kChipPCE;
+        if (value == chiptune::kChipN163) {
+          p.chip = chiptune::kChipPCE;
+          // Keep the alias bank when the family change reapplies COLOR.
+          p.color = static_cast<uint16_t>((p.color & 511) | 512);
+        }
       }
       break;
     case ARP:
@@ -130,7 +140,7 @@ private:
 public:
   const char *getParameterStrValue(uint8_t index, int32_t value) const override final
   {
-    static const char *const chip[] = {"NES", "GB", "SN76489", "YM2149", "SID", "PCE/WT", "POKEY", "VRC6"};
+    static const char *const chip[] = {"NES", "GB", "SN76489", "YM2149", "SID", "PCE/WT", "POKEY", "VRC6", "YM 5B", "X TIA", "WT4", "X FDS", "OLD PCM"};
     static const char *const arp[] = {"OFF", "MAJ", "MIN", "OCT", "5TH", "SUS4"};
     static const char *const subAy[] = {"OFF", "-1OCT", "UNI", "BZSAW", "BZTRI"};
     static const char *const subSid[] = {"OFF", "-1OCT", "UNI", "SYNC", "RING"};
@@ -158,7 +168,7 @@ public:
     switch (index)
     {
     case PRESET: return value >= 0 && value < chiptune::kNumPresets ? chiptune::presetName(value) : nullptr;
-    case CHIP:  return value >= 0 && value < chiptune::kNumPrimaryChips ? chip[value] : nullptr;
+    case CHIP:  return value >= 0 && value < chiptune::kNumChips ? chip[value] : nullptr;
     case ARP: {
       static char label[16];
       static const char *const rate[] = {"60H", "1/4", "1/8", "1/16", "1/32", "30H"};
@@ -188,6 +198,7 @@ public:
   {
     ensureInit();
     commitParameters();
+    notePending_ = false;
     apu_.reset();
   }
 
@@ -204,10 +215,13 @@ public:
   {
     ensureInit();
     commitParameters();
-    apu_.noteOn(velo);
+    // Runtime pitch arrives with the next render. Start the voice only after
+    // that pitch is applied, rather than scheduling edges at the previous note.
+    pendingVelocity_ = velo;
+    notePending_ = true;
   }
-  void noteOff(uint8_t) { apu_.noteOff(); }
-  void allNoteOff() { apu_.noteOff(); }
+  void noteOff(uint8_t) { notePending_ = false; apu_.noteOff(); }
+  void allNoteOff() { noteOff(0); }
 
   void setTempo(float bpm) { ensureInit(); apu_.setTempo(bpm); }
   void tempo4ppqnTick(uint32_t counter) { ensureInit(); apu_.tempo4ppqnTick(counter); }
@@ -225,6 +239,10 @@ public:
     ensureInit();
     commitParameters();
     apu_.setFrequency(w0_ * static_cast<float>(getSampleRate()) * std::pow(2.f, bend_ * (2.f / 12.f)));
+    if (notePending_) {
+      apu_.noteOn(pendingVelocity_);
+      notePending_ = false;
+    }
     for (const float *end = out + frames; out != end; ++out)
       *out = apu_.render();
   }
@@ -260,6 +278,7 @@ private:
     p_ = chiptune::preset(0);
     pendingMask_ = 0;
     presetIndex_ = 0;
+    notePending_ = false;
     apu_.init(static_cast<float>(getSampleRate()));
     apu_.setParams(p_);
   }
@@ -272,4 +291,6 @@ private:
   int presetIndex_;
   float bend_; // -1..1, zero from BSS so a bend before the first render survives
   bool ready_;
+  bool notePending_;
+  uint8_t pendingVelocity_;
 };

@@ -274,10 +274,22 @@ public:
     const bool oldVariant = p_.ay5b;
     p_ = p;
     sanitize();
-    if (p_.chip != oldChip || p_.ay5b != oldVariant) setChip(p_.chip);
+    const bool changedChip = p_.chip != oldChip || p_.ay5b != oldVariant;
+    if (changedChip) setChip(p_.chip);
     if (!gate_) detuneCurrent_ = p_.detune;
     applyOn();
     updateSidCoefs();
+    if (changedChip) {
+      // Timers belong to the old chip clock; SID leaves event timers stopped.
+      // Rebuild voice history while retaining the held gate and envelope level.
+      const bool held = gate_;
+      const float volume = vol_;
+      reset();
+      gate_ = held;
+      vol_ = volume;
+      restartChannels();
+      if (held) sidState_ = kAttack;
+    }
     dirty_ = true;
   }
 
@@ -318,19 +330,7 @@ public:
     vibPhase_ = 0.f;
     vibValue_ = 0.f;
     vibDelay_ = 48;
-    p1_ = p2_ = sub_ = noise_ = env_ = Chan();
-    noise_.lfsr = p_.chip == kChipPSG ? 0x8000u
-                : (p_.chip == kChipPOKEY ? 0x1FFFFu : (p_.chip == kChipTIA ? 0x1FFu : 1u));
-    hpLatch_ = false;
-    env_.level = 15;
-    applyOn();
-    updatePeriods();
-    p1_.timer = p1_.period;
-    p2_.timer = p2_.period;
-    sub_.timer = sub_.period;
-    noise_.timer = noise_.period;
-    env_.timer = env_.period;
-    if (hpMode()) sub_.timer = sub_.period * 1.5f; // sample ch1 half a period after its edges
+    restartChannels();
     if (wasIdle) {
       for (int i = 0; i < 4; ++i) sv_[i] = SidVoice();
       updatePeriods();
@@ -483,6 +483,12 @@ private:
   bool ayLike() const { return p_.chip == kChipAY || p_.chip == kChipS5B; }
   bool squareChip() const { return p_.chip == kChipPSG || ayLike(); }
   bool buzz() const { return ayLike() && p_.sub >= 3; }
+  uint8_t envelopeShape() const {
+    // Pure envelope VOICE modes choose the waveform explicitly. Layered buzz
+    // modes retain all eight COLOR shapes.
+    if (p_.voice == 1 && buzz()) return p_.sub == 4 ? 2 : 0;
+    return p_.colorEnabled ? static_cast<uint8_t>(p_.color >> 7) : (p_.sub == 4 ? 2 : 0);
+  }
   bool pokeyLike() const { return p_.chip == kChipPOKEY || p_.chip == kChipTIA; }
   uint8_t pokeyMode() const { return p_.chip == kChipTIA ? detail::kTiaMode[p_.duty] : p_.duty; }
   bool hpMode() const { return p_.chip == kChipPOKEY && p_.sub == 3; }
@@ -527,6 +533,22 @@ private:
     sub_.on = g && p_.sub != 0 && gainWave() > 0.f && !(p_.voice == 3 && waveOnMain()) && !b && !pceLfo() && !paulaFm() && !paulaAm();
     noise_.on = g && p_.noise != 0 && gainNoise() > 0.f && p_.chip != kChipVRC6 && p_.chip != kChipN163 && p_.chip != kChipFDS;
     env_.on = g && b && gain1() > 0.f;
+  }
+
+  void restartChannels() {
+    p1_ = p2_ = sub_ = noise_ = env_ = Chan();
+    noise_.lfsr = p_.chip == kChipPSG ? 0x8000u
+                : (p_.chip == kChipPOKEY ? 0x1FFFFu : (p_.chip == kChipTIA ? 0x1FFu : 1u));
+    hpLatch_ = false;
+    env_.level = 15;
+    applyOn();
+    updatePeriods();
+    p1_.timer = p1_.period;
+    p2_.timer = p2_.period;
+    sub_.timer = sub_.period;
+    noise_.timer = noise_.period;
+    env_.timer = env_.period;
+    if (hpMode()) sub_.timer = sub_.period * 1.5f;
   }
 
   void setCarrierPeriod(float period) {
@@ -594,7 +616,7 @@ private:
       c.level = static_cast<uint8_t>((c.seq * 42) >> 3);
       break;
     case Kind::kEnv: {
-      const uint8_t shape = p_.colorEnabled ? static_cast<uint8_t>(p_.color >> 7) : (p_.sub == 4 ? 2 : 0);
+      const uint8_t shape = envelopeShape();
       c.seq = static_cast<uint8_t>((c.seq + 1) & 31);
       const uint8_t ramp = c.seq & 15;
       const uint8_t triangle = c.seq < 16 ? 15 - ramp : ramp;
@@ -907,8 +929,11 @@ private:
       const float per = spec_.clk / (16.f * f1);
       noise_.period = per < 4.f ? 4.f : per;
     }
-    if (ayLike())
-      env_.period = stepFor(16.f, (p_.colorEnabled ? ((p_.color >> 7) >= 2 && (p_.color >> 7) <= 4) : p_.sub == 4) ? 32.f : 16.f, f1, 0.f, 65535.f);
+    if (ayLike()) {
+      const uint8_t shape = envelopeShape();
+      const bool longCycle = (shape >= 2 && shape <= 4) || shape == 6;
+      env_.period = stepFor(16.f, longCycle ? 32.f : 16.f, f1, 0.f, 65535.f);
+    }
   }
 
   void controlTick() {

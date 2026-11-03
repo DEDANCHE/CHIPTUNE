@@ -1,58 +1,88 @@
 # CHIPTUNE
 
-Exploration of a chiptune oscillator unit for the **Korg NTS-1 digital kit mkII**
-(logue SDK) built on an APU-style engine instead of a classic wavetable/PolyBLEP oscillator.
+An APU-style chiptune oscillator for the **Korg NTS-1 digital kit mkII**, built with
+the logue SDK. Version 2.0.2 includes eight primary chip families and explicit
+compatibility entries for legacy engines. Hardware listening and CPU profiling
+remain pending.
 
-- Design notes, engine comparison and open questions: [docs/DESIGN.md](docs/DESIGN.md)
-- [Oscillator revision 2](docs/OSCILLATORS_V2.md) – eight primary families, legacy IDs, controls, and migration
-- `src/apu_core.h` – portable, header-only core: NES, GB, SN76489, YM2149, SID, PCE/WT, POKEY, VRC6; experimental/legacy models remain available through presets
-- `src/presets.h` / [docs/PRESETS.md](docs/PRESETS.md) – 74 presets (original positions retained); knob A is COLOR, knob B is DETN/FLT/FM depth
-- `unit/` – NTS-1 mkII unit glue (`header.c`, `osc.h`, `unit.cc`), written against the SDK `dummy-osc` template
-- `test/host_render.cpp` – host test + WAV renderer
+## Installation
 
-## Status
+Load [dist/chipapu.nts1mkiiunit](dist/chipapu.nts1mkiiunit) using the Korg Kontrol
+Editor. This package targets the NTS-1 **mkII**; it is not an NTS-1 mkI unit.
 
-Revision 2 was built and host-tested on 2026-11-03. This major revision changes the parameter layout: reselect a preset and recreate v1 edits before saving a v2 patch. Hardware listening and CPU profiling remain pending.
+## Controls and presets
 
-| Piece | State |
-|-------|-------|
-| APU core | Compiles with `-Wall -Wextra -std=c++11`; all 309 host renderer checks and 461 adapter checks pass |
-| Unit glue | **Builds with the logue SDK `nts-1_mkii` makefiles** (arm-none-eabi-gcc 14.2.1, no warnings) into a 42,244-byte `.nts1mkiiunit`; not yet run on hardware |
-| SHAPE_LFO / pitch bend | Implemented; ranges assumed (bend 14-bit centred 8192, ±2 semitones). Audio input not used: all 10 parameter slots are taken |
-| Size / RAM | ELF sections: text 37,963 bytes, data 3,028 bytes, bss 6,444 bytes. CPU on Cortex-M7 is not yet measured |
+- [Oscillators and controls](docs/oscillators.md): chip families, the ten controls,
+  voice modes, tuning, and engine details.
+- [Preset catalog](docs/presets.md): the available patches and how edits are recalled.
 
-## Host test
+Knob A controls COLOR. Knob B controls detune, SID filter closure, or FM depth,
+depending on the selected engine.
 
-The host renderer targets C++11 (the original revision was verified with `zig c++`):
+## Building and testing
 
-```
-zig c++ -std=c++11 -Wall -Wextra -O2 test/host_render.cpp -o build/host_render
-build/host_render build      # prints checks, writes WAVs into build/
-```
+The portable core and host tests target C++11. Run these PowerShell commands from
+the repository root with Zig available on PATH:
 
-Adapter regression source is in `test/host_unit.cpp`, using host SDK substitutes from `test/support` (include paths: `test/support` and `src`). It covers presets in both recall orders, family aliases, COLOR/voice/rate parameters, repeated edits, and reset/suspend behavior. The renderer adds musical-tuning, solo, zero-depth FM and tempo cases. All 770 checks pass.
-
-```
-zig c++ -std=c++11 -Wall -Wextra -O2 -Itest/support -Isrc test/host_unit.cpp -o build/host_unit
-build/host_unit
+```powershell
+New-Item -ItemType Directory -Force build/host, build/audio | Out-Null
+zig c++ -std=c++11 -Wall -Wextra -O2 tests/core_audio_test.cpp -o build/host/core_audio_test.exe
+& ./build/host/core_audio_test.exe build/audio
+zig c++ -std=c++11 -Wall -Wextra -O2 -Itests/sdk_stubs -Isrc tests/adapter_test.cpp -o build/host/adapter_test.exe
+& ./build/host/adapter_test.exe
 ```
 
-## Building the unit
+The core suite tests synthesis and writes WAV files. The adapter suite uses SDK
+stubs and tests parameter recall, note timing, engine changes, and reset behavior.
+See [validation results](docs/oscillators.md#validation) for test counts, compiler
+versions, and package size. Generated files stay under the ignored `build/` folder.
 
-The rebuilt `dist/chipapu.nts1mkiiunit` contains revision 2 and the review fixes. It has not yet been tested on hardware.
+To build the unit on Windows, install ARM GCC, GNU make, and Git for Windows, and
+provide a local logue-sdk checkout:
 
-Windows shortcut (logue-sdk checkout + arm-none-eabi-gcc + GNU make + Git for Windows):
-
-```
+```powershell
 $env:LOGUE_SDK = "C:\path\to\logue-sdk"
-powershell -File tools\build_unit.ps1      # -> build\unit\chipapu.nts1mkiiunit
+powershell -File tools/build_unit.ps1
+# Output: build/unit/chipapu.nts1mkiiunit
 ```
 
-The script uses the SDK's CMSIS checkout when present, otherwise fetches the headers into `build/CMSIS`. It stages the project in `build/unit` and runs `make install` with the SDK makefiles. The SDK targets gcc-arm-none-eabi 10.3; this revision was built with 14.2.1.
+The script stages sources from `platform/nts1_mkii/` and `src/` in `build/unit/`,
+then runs the SDK makefiles. It uses the SDK's CMSIS checkout when available,
+otherwise fetching headers into `build/CMSIS`. The SDK targets ARM GCC 10.3;
+the compiler used for the current package is recorded in the validation results.
 
-Manual / Docker route:
+For a manual or SDK Docker build:
 
-1. Copy `logue-sdk/platform/nts-1_mkii/dummy-osc` to a new project folder (keeps SDK `Makefile` and `config.mk`).
-2. Replace its `header.c`, `osc.h` and `unit.cc` with the files from `unit/`, and copy both `src/apu_core.h` and `src/presets.h` next to them. The custom `unit.cc` is required for correct parameter recall.
-3. Set the project name in `config.mk`, then `build nts-1_mkii/<project>` in the SDK Docker environment.
-4. Load the resulting `.nts1mkiiunit` with the Korg Kontrol Editor.
+1. Copy `logue-sdk/platform/nts-1_mkii/dummy-osc` into a new project directory,
+   retaining its `Makefile` and `config.mk`.
+2. Replace `header.c`, `osc.h`, and `unit.cc` with the files from
+   `platform/nts1_mkii/`. Copy `src/apu_core.h` and `src/presets.h` alongside them.
+3. Set the project name in `config.mk`, then run `build nts-1_mkii/<project>`
+   in the SDK Docker environment.
+4. Load the resulting unit with the Korg Kontrol Editor.
+
+The custom `unit.cc` is required for parameter recall. When preparing a release,
+copy the tested package from `build/unit/` to `dist/`.
+
+## Migration
+
+For v1 patches, reselect a preset and recreate edits using the v2 control layout.
+For v2.0.0 legacy patches, reselect the actual engine in CHIP and save again.
+See the [migration notes](docs/oscillators.md#migration) for details.
+
+## Repository layout and history
+
+| Directory | Contents |
+|---|---|
+| `src/` | Portable synthesis engine and preset definitions |
+| `platform/nts1_mkii/` | SDK callbacks, oscillator adapter, and unit metadata |
+| `tests/` | Core audio and adapter regression suites |
+| `tests/sdk_stubs/` | Minimal SDK substitutes for host tests |
+| `tools/` | Unit build script |
+| `docs/` | Current controls, presets, migration, and validation |
+| `docs/archive/` | Historical design notes |
+| `dist/` | Installable unit package |
+| `build/` | Ignored build products, test executables, and rendered audio |
+
+The [v1 design archive](docs/archive/design-v1.md) preserves the original engine
+comparison and measurements. Its parameter tables describe revision 1.
