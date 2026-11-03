@@ -114,9 +114,7 @@ __unit_callback void unit_set_param_value(uint8_t id, int32_t value)
 {
   if (id >= unit_header.num_params) return;
   // clip to valid range as defined in header
-  // Accept legacy chip IDs from saved callback data even though the v2 menu has eight families.
-  const int32_t maximum = id == Osc::CHIP ? chiptune::kNumChips - 1 : unit_header.params[id].max;
-  value = clipminmaxi32(unit_header.params[id].min, value, maximum);
+  value = clipminmaxi32(unit_header.params[id].min, value, unit_header.params[id].max);
 
   s_osc_instance.setParameter(id, value);
 }

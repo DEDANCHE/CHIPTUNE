@@ -1,5 +1,5 @@
 <#
-  Builds unit/ + src/ into chipapu.nts1mkiiunit with the logue SDK (NTS-1 mkII) makefiles.
+  Builds platform/nts1_mkii/ + src/ into chipapu.nts1mkiiunit with the logue SDK (NTS-1 mkII) makefiles.
   Works out of build/unit, so the SDK checkout is left untouched.
 
   Needs: logue-sdk checkout ($env:LOGUE_SDK or -Sdk), arm-none-eabi-gcc (PATH or -ToolchainBin),
@@ -41,7 +41,7 @@ if (-not (Test-Path "$cmsis\CMSIS\Include\arm_math.h")) {
 
 $proj = Join-Path $repo "build\unit"
 New-Item -ItemType Directory -Force $proj | Out-Null
-Copy-Item "$repo\unit\unit.cc", "$plat\dummy-osc\Makefile" $proj -Force
+Copy-Item "$repo\platform\nts1_mkii\unit.cc", "$plat\dummy-osc\Makefile" $proj -Force
 (Get-Content "$plat\dummy-osc\config.mk" -Raw).Replace("PROJECT := dummy_osc", "PROJECT := $Project") |
   Set-Content "$proj\config.mk" -NoNewline
 # The SDK makefile has no header dependencies, so always rebuild from scratch.
@@ -51,7 +51,7 @@ if ((Split-Path $buildDir -Parent) -ne $projectDir) { throw "Build directory is 
 if (Test-Path -LiteralPath $buildDir) { Remove-Item -LiteralPath $buildDir -Recurse -Force }
 Get-ChildItem -LiteralPath $projectDir -Filter "*.nts1mkiiunit" -File |
   ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
-Copy-Item "$repo\unit\header.c", "$repo\unit\osc.h", "$repo\src\apu_core.h", "$repo\src\presets.h" $proj -Force
+Copy-Item "$repo\platform\nts1_mkii\header.c", "$repo\platform\nts1_mkii\osc.h", "$repo\src\apu_core.h", "$repo\src\presets.h" $proj -Force
 
 function Fwd($p) { $p -replace '\\', '/' }
 Push-Location $proj

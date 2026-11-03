@@ -1,5 +1,5 @@
 // Host test: renders APU scenarios to 32-bit float mono WAV files.
-//   host_render <outdir>
+//   core_audio_test <outdir>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -80,6 +80,53 @@ static double peakAbs(const std::vector<float> &s, size_t from, size_t to) {
 int main(int argc, char **argv) {
   const std::string dir = argc > 1 ? argv[1] : ".";
   ApuParams p;
+
+  {
+    // Enabling the AY envelope while a tone is held must retain an audible fundamental.
+    Apu apu;
+    apu.init(48000.f);
+    ApuParams q;
+    q.chip = kChipAY; q.voice = 1; q.quantize = false;
+    apu.setParams(q); apu.setFrequency(220.f); apu.noteOn(127);
+    for (int i = 0; i < 9600; ++i) apu.render();
+    q.sub = 3;
+    apu.setParams(q);
+    std::vector<float> s;
+    for (int i = 0; i < 48000; ++i) s.push_back(apu.render());
+    const double fundamental = mag(s, 4800, 48000, 220.0);
+    check(fundamental > 0.03, "held AY tone can enable its envelope", fundamental);
+  }
+
+  {
+    // A triangle reference must not recall the same envelope as the saw reference.
+    for (float hz : {55.f, 220.f, 880.f}) {
+      ApuParams tri = preset(21), saw = preset(42);
+      tri.quantize = saw.quantize = false;
+      const auto a = note(tri, hz, 1.f, 1.f), b = note(saw, hz, 1.f, 1.f);
+      double difference = 0;
+      for (size_t i = 4800; i < a.size(); ++i) difference += std::fabs(a[i] - b[i]);
+      check(difference / 43200 > 0.01, "YM triangle and saw presets differ", difference / 43200);
+      check(mag(a, 4800, 48000, hz) > 0.02, "YM triangle preset keeps its fundamental", mag(a, 4800, 48000, hz));
+    }
+  }
+
+  {
+    // Every YM envelope shape must retain the note's fundamental, including
+    // the quantized triangle (shape 6), whose cycle spans 32 envelope ticks.
+    for (bool sunsoft : {false, true}) {
+      for (int shape = 0; shape < 8; ++shape) {
+        ApuParams q;
+        q.chip = kChipAY; q.ay5b = sunsoft;
+        q.sub = 3; q.voice = 0; q.pulse2Level = 0.f; q.quantize = false;
+        applyColor(q, static_cast<uint16_t>(shape * 128));
+        const auto s = note(q, 440.f, 1.f, 1.f);
+        const double fundamental = mag(s, 4800, 48000, 440.0);
+        const double octaveBelow = mag(s, 4800, 48000, 220.0);
+        check(fundamental > 0.03 && fundamental > 10 * octaveBelow,
+              "YM envelope shape preserves 440 Hz pitch", fundamental);
+      }
+    }
+  }
 
   {
     // Musical tuning must preserve low fundamentals beyond original register limits.

@@ -2,7 +2,7 @@
 
 Historical design and measurements for revision 1. The current lineup, parameter layout,
 engine changes, migration requirements and unverified status are documented in
-[Oscillator revision 2](OSCILLATORS_V2.md). The tables and measurements below predate that revision.
+[Oscillators](../oscillators.md). The tables and measurements below predate that revision.
 
 ## Platform constraints (from the logue SDK `nts-1_mkii` README)
 
@@ -102,7 +102,7 @@ The 8-bit noise and combined waveforms are approximations rather than the real D
 
 - `SHAPE_LFO`: SID filter cutoff += 0.5 × LFO; on event chips it modulates pulse 2 detune by up to ±8 register steps.
 - Pitch bend: ±2 semitones, applied in `process`.
-- `src/presets.h` holds 60 reference presets (`chiptune::preset(i)`); the PRESET menu item (above CHIP) selects one, see [docs/PRESETS.md](PRESETS.md).
+- `src/presets.h` holds 60 reference presets (`chiptune::preset(i)`); the PRESET menu item (above CHIP) selects one, see [current preset catalog](../presets.md).
 
 ## Other APUs to add later (same primitives)
 
