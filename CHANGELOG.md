@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.0] - 2026-11-03
 
 ### Added
+- **License**: Adopted the GNU General Public License v3.0 ([LICENSE](LICENSE)).
 - **Developer ID Registration**: Assigned and registered official Korg Logue SDK FourCC developer identifier `0x44443732U` (`'DD72'`) in `platform/nts1_mkii/header.c`, preventing identifier collisions in the Korg Kontrol Editor.
 - **Dedicated Solo Noise Articulation**:
   - **Atari 2600 TIA**: Knob A (`COLOR`) on solo noise patches (`VOICE` NOISE / 4) now dynamically modulates between the four authentic hardware polynomial distortion modes: pure tone divider rumble (`[51] X TIA LOW NZ`), 4-bit poly crunch (`[14] X TIA THUD`), 5-bit poly metal (`[52] X TIA METAL`), and 9-bit poly white noise snare (`[28] X TIA SNARE`).

@@ -114,3 +114,9 @@ See the [migration notes](docs/oscillators.md#migration) for details.
 
 The [v1 design archive](docs/archive/design-v1.md) preserves the original engine
 comparison and measurements. Its parameter tables describe revision 1.
+
+## License
+
+This project is licensed under the **GNU General Public License v3.0** (GPL-3.0) - see the [LICENSE](LICENSE) file for details.
+
+The Korg Logue SDK wrapper in `platform/nts1_mkii/unit.cc` is licensed under the BSD 3-Clause License by KORG INC.
