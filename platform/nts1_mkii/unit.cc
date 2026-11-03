@@ -41,6 +41,7 @@
 #include "osc.h"
 #include "unit_osc.h"       // base definitions for osc units
 #include "utils/int_math.h" // clipminmaxi32()
+#include "profiling.h"
 // #include <algorithm>        // std::fill
 
 static Osc s_osc_instance; // Note: In this example, actual instance of custom osc object.
@@ -77,8 +78,10 @@ __unit_callback int8_t unit_init(const unit_runtime_desc_t *desc)
 
   // cache the context for later use
   context = static_cast<const unit_runtime_osc_context_t *>(desc->hooks.runtime_context);
+  if (!context) return k_unit_err_undef;
 
   s_osc_instance.init(nullptr);
+  chipapu_profile_init();
 
   return k_unit_err_none;
 }
@@ -105,9 +108,11 @@ __unit_callback void unit_suspend()
 
 __unit_callback void unit_render(const float *in, float *out, uint32_t frames)
 {
+  const uint32_t startCycles = chipapu_profile_begin();
   s_osc_instance.setPitch(osc_w0f_for_note((context->pitch) >> 8, context->pitch & 0xFF));
   s_osc_instance.setShapeLfo(q31_to_f32(context->shape_lfo));
   s_osc_instance.process(in, out, frames);
+  chipapu_profile_end(startCycles, frames);
 }
 
 __unit_callback void unit_set_param_value(uint8_t id, int32_t value)

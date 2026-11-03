@@ -7,9 +7,15 @@
  */
 #include "processor.h"
 #include "unit_osc.h"
+#include <cmath>
+#include <cstdint>
+#if defined(__GNUC__)
+#pragma GCC visibility push(hidden)
+#endif
 
 #include "apu_core.h"
 #include "presets.h"
+#include "parameters.h"
 
 class Osc : public Processor
 {
@@ -18,16 +24,9 @@ public:
 
   enum
   {
-    COLOR = 0U, // knob A
-    DETN,     // knob B
-    PRESET,
-    CHIP,
-    ARP,
-    SUB,
-    NOISE,
-    DECAY,
-    QUANT,
-    INTVL,
+#define PARAM_ENUM(symbol, maximum, initial, type, label) symbol,
+    CHIPAPU_PARAMETERS(PARAM_ENUM)
+#undef PARAM_ENUM
     NUM_PARAMS
   };
 
@@ -35,7 +34,10 @@ public:
   {
     ensureInit();
     if (index >= NUM_PARAMS) return;
-    static const int32_t maxValue[NUM_PARAMS] = {1023, 1023, chiptune::kNumPresets - 1, 12, 35, 19, 5, 15, 3, 5};
+#define PARAM_MAX(symbol, maximum, initial, type, label) maximum,
+    static constexpr int32_t maxValue[NUM_PARAMS] = {CHIPAPU_PARAMETERS(PARAM_MAX)};
+#undef PARAM_MAX
+    static_assert(maxValue[PRESET] + 1 == chiptune::kNumPresets, "Preset range mismatch");
     value = value < 0 ? 0 : (value > maxValue[index] ? maxValue[index] : value);
     pending_[index] = value;
     pendingMask_ |= static_cast<uint16_t>(1U << index);
@@ -58,6 +60,7 @@ public:
     case CHIP: return chipValue(p);
     case ARP: return p.arp + 6 * p.arpRate;
     case SUB:
+      if (p.articulation) return 19 + p.articulation;
       if (p.chip == chiptune::kChipAY && p.voice == 1 && p.sub >= 3) return 18 + p.sub - 3;
       return p.voice ? p.voice + 4 : p.sub;
     case NOISE: return p.noise;
@@ -108,6 +111,13 @@ private:
       p.arpRate = static_cast<uint8_t>(value / 6);
       break;
     case SUB:
+      p.articulation = 0;
+      if (value >= 20) {
+        p.articulation = static_cast<uint8_t>(value - 19);
+        p.voice = p.articulation == 3 ? 0 : (p.chip == chiptune::kChipNES || p.chip == chiptune::kChipGB || p.chip == chiptune::kChipVRC6 ? 3 : 1);
+        p.sub = p.voice == 3 ? 2 : 0;
+        break;
+      }
       if (value >= 18) { p.voice = 1; p.sub = static_cast<uint8_t>(value - 15); break; }
       p.voice = value >= 5 ? static_cast<uint8_t>(value - 4) : 0;
       if (value < 5) p.sub = static_cast<uint8_t>(value);
@@ -182,6 +192,10 @@ public:
       return label;
     }
     case SUB:
+      if (value >= 20 && value <= 22) {
+        static const char *const articulation[] = {"KICK", "TOM", "SLOW PWM"};
+        return articulation[value - 20];
+      }
       if (value >= 18 && value <= 19 && resolvedParams().chip != chiptune::kChipAY) return "YM ONLY";
       return value >= 0 && value <= 4 ? sub[value] : (value >= 5 && value <= 19 ? voice[value - 5] : nullptr);
     case NOISE: return value >= 0 && value <= 5 ? noise[value] : nullptr;
@@ -199,6 +213,10 @@ public:
     ensureInit();
     commitParameters();
     notePending_ = false;
+    tickPending_ = false;
+    channelPressure_ = polyPressure_ = 0;
+    transitionLeft_ = 0;
+    lastSample_ = 0.f;
     apu_.reset();
   }
 
@@ -208,10 +226,10 @@ public:
   void setShapeLfo(float lfo)
   {
     ensureInit();
-    apu_.setShapeMod(lfo);
+    shapeLfo_ = lfo;
   }
 
-  void noteOn(uint8_t, uint8_t velo)
+  void noteOn(uint8_t note, uint8_t velo)
   {
     ensureInit();
     commitParameters();
@@ -219,32 +237,48 @@ public:
     // that pitch is applied, rather than scheduling edges at the previous note.
     pendingVelocity_ = velo;
     notePending_ = true;
+    tickPending_ = false;
+    activeNote_ = note;
+    polyPressure_ = 0;
   }
-  void noteOff(uint8_t) { notePending_ = false; apu_.noteOff(); }
+  void noteOff(uint8_t) { notePending_ = tickPending_ = false; polyPressure_ = 0; apu_.noteOff(); }
   void allNoteOff() { noteOff(0); }
 
   void setTempo(float bpm) { ensureInit(); apu_.setTempo(bpm); }
-  void tempo4ppqnTick(uint32_t counter) { ensureInit(); apu_.tempo4ppqnTick(counter); }
+  void tempo4ppqnTick(uint32_t counter) {
+    ensureInit();
+    if (notePending_) { pendingTick_ = counter; tickPending_ = true; }
+    else { commitParameters(); apu_.tempo4ppqnTick(counter); }
+  }
   // Assumes a 14-bit bend centred on 8192; +-2 semitones.
   void pitchBend(uint16_t bend)
   {
     const float b = (static_cast<float>(bend) - 8192.f) * (1.f / 8192.f);
     bend_ = b < -1.f ? -1.f : (b > 1.f ? 1.f : b);
   }
-  void channelPressure(uint8_t) {}
-  void aftertouch(uint8_t, uint8_t) {}
+  void channelPressure(uint8_t value) { ensureInit(); channelPressure_ = value > 127 ? 127 : value; }
+  void aftertouch(uint8_t note, uint8_t value) { ensureInit(); if (note == activeNote_) polyPressure_ = value > 127 ? 127 : value; }
 
   void process(const float *__restrict, float *__restrict out, uint32_t frames) override final
   {
     ensureInit();
     commitParameters();
     apu_.setFrequency(w0_ * static_cast<float>(getSampleRate()) * std::pow(2.f, bend_ * (2.f / 12.f)));
+    const float pressure = (channelPressure_ > polyPressure_ ? channelPressure_ : polyPressure_) * (1.f / 127.f);
+    apu_.setShapeMod(shapeLfo_ + (p_.chip == chiptune::kChipSID ? -pressure : pressure));
     if (notePending_) {
       apu_.noteOn(pendingVelocity_);
       notePending_ = false;
+      if (tickPending_) { apu_.tempo4ppqnTick(pendingTick_); tickPending_ = false; }
     }
-    for (const float *end = out + frames; out != end; ++out)
-      *out = apu_.render();
+    for (const float *end = out + frames; out != end; ++out) {
+      float sample = apu_.render();
+      if (transitionLeft_) {
+        sample += (transitionFrom_ - sample) * (transitionLeft_ * (1.f / 48.f));
+        --transitionLeft_;
+      }
+      *out = lastSample_ = sample;
+    }
   }
 
 private:
@@ -259,13 +293,20 @@ private:
     }
     for (uint8_t i = 0; i < NUM_PARAMS; ++i)
       if (i != PRESET && i != CHIP && (pendingMask_ & (1U << i))) applyParameter(p, i, pending_[i]);
+    // Pure YM envelope states are not portable FM/sync states on other chips.
+    if (p.chip != chiptune::kChipAY && p.voice == 1 && p.sub >= 3) p.sub = 0;
     return p;
   }
 
   void commitParameters()
   {
     if (!pendingMask_) return;
-    p_ = resolvedParams();
+    const auto next = resolvedParams();
+    if (lastSample_ != 0.f && (next.chip != p_.chip || next.ay5b != p_.ay5b || (next.color >> 7) != (p_.color >> 7) || next.voice != p_.voice)) {
+      transitionFrom_ = lastSample_;
+      transitionLeft_ = 48;
+    }
+    p_ = next;
     if (pendingMask_ & (1U << PRESET)) presetIndex_ = clampPreset(pending_[PRESET]);
     pendingMask_ = 0;
     apu_.setParams(p_);
@@ -293,4 +334,12 @@ private:
   bool ready_;
   bool notePending_;
   uint8_t pendingVelocity_;
+  bool tickPending_ = false;
+  uint32_t pendingTick_ = 0;
+  uint8_t activeNote_ = 0, channelPressure_ = 0, polyPressure_ = 0;
+  float shapeLfo_ = 0.f, lastSample_ = 0.f, transitionFrom_ = 0.f;
+  uint8_t transitionLeft_ = 0;
 };
+#if defined(__GNUC__)
+#pragma GCC visibility pop
+#endif

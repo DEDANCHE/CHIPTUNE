@@ -158,6 +158,7 @@ enum Chip : uint8_t {
 };
 
 struct ApuParams {
+  uint8_t articulation = 0; // 0 normal, 1 kick, 2 tom, 3 slow/deep SID PWM
   Chip chip = kChipNES;
   uint8_t duty = 2;      // 0..3. NES/GB: pulse duty 12.5/25/50/75 %, GB: wave table.
                          //       SID: waveform tri / saw / pulse(PWM) / saw&pulse.
@@ -240,6 +241,10 @@ public:
 
   // Clear voice and filter history without rebuilding tables or changing the patch.
   void reset() {
+    pitchEnv_ = 0.f;
+    shapeMod_ = shapeTarget_ = 0.f;
+    detuneCurrent_ = p_.detune;
+    updateSidCoefs();
     p1_ = p2_ = sub_ = noise_ = env_ = Chan();
     vol_ = 0.f;
     level_ = dc_ = ctrlAcc_ = 0.f;
@@ -318,6 +323,7 @@ public:
   }
 
   void noteOn(uint8_t velocity) {
+    pitchEnv_ = p_.articulation == 1 ? 24.f : (p_.articulation == 2 ? 12.f : 0.f);
     const bool wasIdle = sidState_ == kIdle;
     gate_ = true;
     vol_ = static_cast<float>(1 + (velocity * 14) / 127);
@@ -453,6 +459,7 @@ private:
 
   // Keeps every parameter inside the range the lookup tables are sized for.
   void sanitize() {
+    p_.articulation = lim(p_.articulation, 3);
     if (static_cast<unsigned>(p_.chip) >= static_cast<unsigned>(kNumChips)) p_.chip = kChipNES;
     if (p_.chip == kChipS5B) { p_.chip = kChipAY; p_.ay5b = true; }
     if (p_.chip == kChipN163) {
@@ -871,9 +878,9 @@ private:
   void updatePeriods() {
     const float arpSemi = static_cast<float>(detail::kArp[p_.arp][arpStep_]);
     const float semi2 = static_cast<float>(detail::kIntervals[p_.interval]);
-    const float f1 = freq_ * std::pow(2.f, (arpSemi + vibValue_) / 12.f);
-    const float f2 = freq_ * std::pow(2.f, (arpSemi + semi2 + vibValue_) / 12.f);
-    const float fs = freq_ * std::pow(2.f, (vibValue_ + (p_.sub == 1 ? -12.f : 0.f)) / 12.f);
+    const float f1 = freq_ * std::pow(2.f, (arpSemi + vibValue_ + pitchEnv_) / 12.f);
+    const float f2 = freq_ * std::pow(2.f, (arpSemi + semi2 + vibValue_ + pitchEnv_) / 12.f);
+    const float fs = freq_ * std::pow(2.f, (vibValue_ + pitchEnv_ + (p_.sub == 1 ? -12.f : 0.f)) / 12.f);
 
     if (p_.chip == kChipSID) {
       sv_[0].inc = sidInc(f1);
@@ -903,7 +910,7 @@ private:
       p2_.period = per(f2, det, st);
       // the bass voice stays a pure tone; in high-pass mode it is the sampling clock
       sub_.period = hpMode() ? per(f1, det, st) : per(fs, 0.f, 2.f);
-      noise_.period = spec_.noiseTable[detail::kNoiseIdx[p_.chip][p_.noise]];
+      noise_.period = noisePeriod();
       p1Base_ = p1_.period;
       return;
     }
@@ -924,9 +931,9 @@ private:
     p1Base_ = p1_.period;
     sub_.period = squareChip() ? stepFor(spec_.pulseUnit, 8.f, fs, 0.f, rm)
                                : stepFor(spec_.waveUnit, ws, fs, 0.f, rm);
-    noise_.period = spec_.noiseTable[detail::kNoiseIdx[p_.chip][p_.noise]];
+    noise_.period = noisePeriod();
     if (p_.chip == kChipPSG && p_.noise == 5) { // pitched periodic noise
-      const float per = spec_.clk / (16.f * f1);
+      const float per = spec_.clk / (16.f * f1) * noiseScale();
       noise_.period = per < 4.f ? 4.f : per;
     }
     if (ayLike()) {
@@ -936,7 +943,15 @@ private:
     }
   }
 
+  float noiseScale() const { return p_.voice == 4 ? std::pow(2.f, -detuneEff() * 0.25f) : 1.f; }
+  float noisePeriod() const {
+    const float period = spec_.noiseTable[detail::kNoiseIdx[p_.chip][p_.noise]] * noiseScale();
+    return period < 4.f ? 4.f : period;
+  }
+
   void controlTick() {
+    pitchEnv_ *= p_.articulation == 1 ? 0.65f : 0.88f;
+    if (pitchEnv_ < 0.001f) pitchEnv_ = 0.f;
     detuneCurrent_ += (p_.detune - detuneCurrent_) * 0.25f;
     shapeMod_ += (shapeTarget_ - shapeMod_) * 0.25f;
     if (std::fabs(p_.detune - detuneCurrent_) < 1e-4f) detuneCurrent_ = p_.detune;
@@ -963,7 +978,8 @@ private:
       vibPhase_ += 6.f / 240.f;
       if (vibPhase_ >= 1.f) vibPhase_ -= 1.f;
       const float tri = vibPhase_ < 0.5f ? 4.f * vibPhase_ - 1.f : 3.f - 4.f * vibPhase_;
-      vibValue_ = tri * static_cast<float>(p_.vibrato) / 30.f;
+      const float soloDepth = (p_.voice == 1 || p_.voice == 3) && !fmMode() && p_.chip != kChipSID ? detuneEff() / 32.f : 0.f;
+      vibValue_ = tri * (static_cast<float>(p_.vibrato) / 30.f + soloDepth);
     }
     updatePeriods();
   }
@@ -1185,8 +1201,8 @@ private:
       return 0.f;
     }
 
-    pwmDepthCurrent_ += (p_.pwmDepth - pwmDepthCurrent_) * 0.002f;
-    pwmRateCurrent_ += (p_.pwmRate - pwmRateCurrent_) * 0.002f;
+    pwmDepthCurrent_ += ((p_.articulation == 3 ? 0.35f : p_.pwmDepth) - pwmDepthCurrent_) * 0.002f;
+    pwmRateCurrent_ += ((p_.articulation == 3 ? 0.25f : p_.pwmRate) - pwmRateCurrent_) * 0.002f;
     pwPhase_ += pwmRateCurrent_ / sr_;
     if (pwPhase_ >= 1.f) pwPhase_ -= 1.f;
     const float pw = 0.5f + pwmDepthCurrent_ * (pwPhase_ < 0.5f ? 4.f * pwPhase_ - 1.f : 3.f - 4.f * pwPhase_);
@@ -1258,6 +1274,7 @@ private:
   float ctrlPeriod_ = 200.f;
   float ctrlAcc_ = 0.f;
   float freq_ = 440.f;
+  float pitchEnv_ = 0.f;
   float vol_ = 15.f;
   float level_ = 0.f;
   float dc_ = 0.f;

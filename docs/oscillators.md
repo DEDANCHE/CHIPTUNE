@@ -1,6 +1,6 @@
 # Oscillators
 
-Current controls and engine behavior for version 2.0.2. See [validation](#validation)
+Current controls and engine behavior for version 2.1.0. See [validation](#validation)
 for build results and remaining hardware checks.
 
 ## Lineup
@@ -38,11 +38,11 @@ override takes precedence during recall. Legacy preset positions remain unchange
 | Slot | Control | Values |
 |---|---|---|
 | 0 | COLOR | 0..1023; chip-specific timbre |
-| 1 | DETN/FLT | 0..1023; period detune, SID filter closure, or FM depth |
-| 2 | PRESET | 0..73; original indices 0..59 retained, fourteen appended |
+| 1 | DETN/FLT | 0..1023; detune, SID filter, FM depth, solo vibrato, or noise rate |
+| 2 | PRESET | 0..76; original indices 0..73 retained, three appended |
 | 3 | CHIP | 0..7 primary families; 8..12 compatibility entries |
 | 4 | ARP/RATE | Six patterns for each of six rates |
-| 5 | VOICE | Original sub/special modes, solos, balance choices, pure YM envelopes |
+| 5 | VOICE | 0..22: layers, solos, balances, YM envelopes, kick/tom, slow PWM |
 | 6 | NOISE | Off, low, mid, high, metal, buzz |
 | 7 | DECAY | 0 hold, 1 fast .. 15 slow |
 | 8 | TUNE/RES | MUSIC, CHIP, MUS+RES, CHP+RES |
@@ -59,6 +59,28 @@ NES/GB/VRC6 use the triangle/wave/saw layer. Values 9..11 balance P2 at 25/50/75
 Values 18/19 select pure YM saw/triangle envelopes independently of COLOR; layered
 buzz modes retain all eight COLOR shapes. Models without a noise or wave channel cannot
 produce that unavailable source. Four-bit GB tables remain amplitude-stepped.
+
+VOICE 20/21 select kick/tom articulation with a falling pitch envelope of 24/12
+semitones respectively. NES/GB/VRC6 use their wave layer; other families use P1.
+DECAY still controls amplitude. VOICE 22 selects slow/deep SID PWM (0.25 Hz, depth
+0.35), independently of COLOR's coupled speed/depth. COLOR still selects the waveform;
+choose its pulse zone for PWM. This articulation has no special effect on other chips.
+
+On non-SID P1/wave solos without FM, DETN adds up to half a semitone of delayed
+vibrato. On event-engine noise solos, it increases the noise clock up to 16x,
+bounded by the engine's minimum period. SID retains filter control. These mappings
+make previously inactive knobs useful without adding a parameter slot.
+
+MIDI channel pressure and poly pressure for the active note are combined using
+their maximum value. Pressure opens SID's filter or adds register/FM/noise/solo
+modulation elsewhere, through the smoothed SHAPE modulation path. With no pressure
+messages there is no added expression. Reset clears pressure; releasing a note
+clears its poly pressure. Channel pressure persists across notes until changed.
+
+Engine, voice and COLOR-zone edits blend from the previous output for 48 samples
+(1 ms). This bounds the first discontinuity without allocating a second engine.
+It is not a full dual-engine tail crossfade. Clock callbacks arriving after a pending
+note-on are applied after the voice starts and before the first output sample.
 
 ARP/RATE uses `pattern + 6 * rate`. Patterns are OFF/MAJ/MIN/OCT/5TH/SUS4. Rates are
 60 Hz tracker, quarter notes, eighth notes, sixteenths, thirty-seconds, and 30 Hz tracker.
@@ -93,7 +115,7 @@ The modulation behavior was checked against the technical descriptions in
 
 ## Migration
 
-Revision 2 is a major version change; the current package is `2.0.2`. A v1 patch's slot 0 was VIB; it is COLOR now.
+Revision 2 is a major version change; the current package is `2.1.0`. A v1 patch's slot 0 was VIB; it is COLOR now.
 The old SID QUANT switch also has different meaning from the new TUNE/RES field.
 Do not replay a v1 raw parameter array as a v2 patch. Reselect its retained preset ID,
 restore intended timbre/voice edits using the new controls, and save again. Stale values
@@ -111,18 +133,34 @@ that explicitly stores the old COLOR value keeps that edit; reselect preset 21 t
 load the corrected default. See [preset review](preset-review.md) for the changes
 and the remaining audition-dependent proposals.
 
+Version 2.1.0 keeps preset IDs 0..73 and appends 74..76. Original preset defaults
+were sample-identical at 220 Hz for 0.5 seconds in a comparison against v2.0.2.
+Saved edits with nonzero DETN on previously inactive solo/noise voices can now
+sound different: set DETN to zero to retain the former unmodulated solo behavior.
+Pressure messages now affect synthesis. Pure YM envelopes are normalized to P1
+solo when switching away from YM, preventing hidden FM state from being lost on
+recall. Engine and timbre transitions use the new short blend.
+
 ## Validation
 
-Built and host-tested on 2026-11-03: 332 core audio checks and 760 adapter checks passed.
+Built and host-tested on 2026-11-03: 341 core audio, 766 adapter, 613 feature, and
+95 runtime callback checks passed with undefined-behavior sanitization.
 The NTS-1 mkII unit builds with ARM GCC 14.2.1 without warnings. The packaged binary is
-42,736 bytes; ELF sections are text 38,423, data 3,056 and bss 6,444 bytes.
+37,688 bytes; ELF sections are text 33,487, data 2,944 and bss 6,472 bytes. The actual
+PT_LOAD span is 43,124 bytes, leaving 6,028 bytes below the 48 KiB load limit.
+All 17 required callbacks remain exported. The release checksum and dependency
+revision are recorded in `dist/manifest.json`.
 
 Executed host regression cases cover recall order and audio identity, explicit legacy
 engine selection, COLOR, voice solos, low-note tuning, zero-depth FM, tempo behavior,
 reset, release, held-note engine transitions, pitch at note attack, distinct YM envelope
-modes, and finite output at extreme settings. Both host suites pass with undefined-behavior
-sanitization. Note-on starts after the next render supplies pitch; engine changes rebuild
+modes, and finite output at extreme settings. Feature tests add pressure, pitch
+envelopes, transition bounds, and every voice/chip combination in both recall orders.
+Note-on starts after the next render supplies pitch; engine changes rebuild
 channel timers without requiring a new note.
-All 1,092 checks passed. The rebuilt `dist/chipapu.nts1mkiiunit` contains this revision.
+All 1,815 checks passed. The rebuilt `dist/chipapu.nts1mkiiunit` contains this revision.
+The instrumented profiling build also passes memory/export checks; host profiling
+and raw/matched audition generation were exercised. See [development](development.md)
+for the reproducible commands and hardware measurement procedure.
 CPU headroom, listening quality and hardware compatibility remain unmeasured on the NTS-1.
 Hardware profiling is required before increasing oversampling or promoting FDS to the main selector.
