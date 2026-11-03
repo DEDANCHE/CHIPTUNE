@@ -20,6 +20,13 @@ int main(){
     if(preset==chiptune::kPresetGbHighHit){difference=0;for(int i=0;i<4000;++i)difference+=std::fabs(x[i]-y[i]);}
     check(difference>0.01,"solo/noise knob has an audible destination");
   }
+  for(int preset : {chiptune::kPresetNesSnare,chiptune::kPresetGbHighHit,chiptune::kPresetXTiaThud}){
+    Osc a{},b{};a.setParameter(Osc::PRESET,preset);b.setParameter(Osc::PRESET,preset);
+    a.setParameter(Osc::COLOR,0);b.setParameter(Osc::COLOR,1023);
+    float x[4000],y[4000];renderFresh(a,x,4000);renderFresh(b,y,4000);
+    double difference=0;for(int i=0;i<4000;++i)difference+=std::fabs(x[i]-y[i]);
+    check(difference>0.01,"solo noise COLOR knob has an audible destination");
+  }
   for(int preset : {chiptune::kPresetSidPwm,chiptune::kPresetNesLead}){
     Osc a{},b{};a.setParameter(Osc::PRESET,preset);b.setParameter(Osc::PRESET,preset);
     float x[4800],y[4800];renderFresh(a,x,4800);renderFresh(b,y,4800);

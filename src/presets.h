@@ -113,9 +113,9 @@ inline const PresetDef *presetTable() {
     {"YM5B ENV HIT", kChipAY, 128, 4, 1, 0, 0, 0, 4, 0, 0, false, 0, 0, true, 0},
     {"X TIA THUD", kChipTIA, 384, 1, 2, 0, 0, 0, 4, 0, 0, false, 4, 0, false, 0},
     {"NES CHORUS", kChipNES, 640, 0, 0, 0, 0, 0, 0, 4, 0, false, 0, 0, false, 0},
-    {"NES SNARE", kChipNES, 640, 0, 3, 0, 0, 0, 2, 0, 0, false, 4, 0, false, 0},
+    {"NES SNARE", kChipNES, 128, 0, 3, 0, 0, 0, 2, 0, 0, false, 4, 0, false, 0},
     {"NES MIN RUN", kChipNES, 128, 0, 0, 2, 0, 0, 0, 0, 0, false, 0, 0, false, 0},
-    {"GB NOISE HIT", kChipGB, 448, 0, 2, 0, 0, 0, 6, 0, 0, false, 4, 0, false, 0},
+    {"GB NOISE HIT", kChipGB, 128, 0, 2, 0, 0, 0, 6, 0, 0, false, 4, 0, false, 0},
     {"PSG FIFTH", kChipPSG, 128, 0, 0, 0, 4, 4, 0, 2, 0, false, 0, 0, false, 0},
     {"YM LEAD", kChipAY, 128, 2, 0, 0, 0, 4, 0, 3, 0, false, 0, 0, false, 0},
     {"YM TRI ENV", kChipAY, 256, 4, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, false, 0},
@@ -181,13 +181,17 @@ inline const PresetDef *presetTable() {
 inline int presetIndex(int index) { return index < 0 ? 0 : (index >= kNumPresets ? kNumPresets - 1 : index); }
 inline const char *presetName(int index) { return detail::presetTable()[presetIndex(index)].name; }
 inline ApuParams preset(int index) {
-  const detail::PresetDef &d = detail::presetTable()[presetIndex(index)];
+  const int idx = presetIndex(index);
+  const detail::PresetDef &d = detail::presetTable()[idx];
   ApuParams p;
   p.chip=d.chip; p.sub=d.sub; p.noise=d.noise; p.arp=d.arp;
   p.interval=d.interval; p.vibrato=d.vibrato; p.decay=d.decay;
   p.detune=d.detune; p.cutoff=d.cutoffPercent / 100.f; p.resonant=d.resonant;
   p.voice=d.voice; p.arpRate=d.arpRate; p.ay5b=d.ay5b; p.articulation=d.articulation;
   applyColor(p,d.color);
+  if (idx == kPresetNesBass) { p.pulse1Level = 0.8f; p.pulse2Level = 0.8f; p.waveLevel = 0.82f; }
+  else if (idx == kPresetGbWaveMix) { p.pulse1Level = 0.8f; p.pulse2Level = 0.8f; p.waveLevel = 0.85f; }
+  else if (idx == kPresetNesOctArp || idx == kPresetNesMaj16th) { p.pulse1Level = 0.82f; p.pulse2Level = 0.82f; }
   return p;
 }
 } // namespace chiptune

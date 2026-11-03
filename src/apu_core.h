@@ -377,7 +377,7 @@ public:
     const uint8_t d1 = pokey ? pm : (sq ? 2 : (pce ? table : p_.duty));
     const uint8_t d2 = pokey ? pm : (sq ? 2 : (pce ? static_cast<uint8_t>((table + 1) & 7) : static_cast<uint8_t>((p_.duty + 1) & 3)));
     const uint8_t ds = pce ? table : (pokey ? 0 : 2);
-    const uint8_t dn = pokey ? 4 : 0;
+    const uint8_t dn = pokey ? (p_.voice == 4 ? pokeyMode() : 4) : 0;
     const bool lfo = fmMode();
     const bool hp = hpMode();
     float remaining = cps_;
@@ -667,7 +667,8 @@ private:
   }
 
   void stepNoise(Chan &c) {
-    const bool shortMode = p_.noise == 4 || p_.noise == 5 || (p_.chip == kChipPSG && p_.colorEnabled && p_.color >= 512);
+    const bool shortMode = p_.noise == 4 || p_.noise == 5 ||
+        (p_.colorEnabled && p_.color >= 512 && (p_.chip == kChipPSG || p_.voice == 4));
     if (p_.chip == kChipPSG) {
       const uint32_t fb = shortMode ? (c.lfsr & 1) : ((c.lfsr ^ (c.lfsr >> 3)) & 1);
       c.lfsr = (c.lfsr >> 1) | (fb << 15);

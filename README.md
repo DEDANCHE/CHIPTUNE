@@ -32,7 +32,7 @@ A technical review of the codebase highlights several notable DSP and embedded e
 - **Smooth dynamic range control**: A rational soft-knee saturator (`softLimit`) provides $C^1$-continuous limiting above $0.75$, maintaining level consistency across disparate chip architectures without clipping artifacts.
 - **Transactional parameter recall**: Korg Kontrol Editor parameter streams are staged through `pendingMask_` and resolved atomically via `resolvedParams()`, preventing intermediate parameter readbacks from corrupting engine models during preset selection.
 - **Transient click mitigation**: Switching engines, wavetable banks, or voice modes triggers a 48-sample (1 ms) linear crossfade from the latched previous sample, eliminating DC pops without running dual active engines.
-- **Strict ELF footprint control**: The packaged binary occupies 43,124 bytes of the 49,152-byte (48 KiB) PT_LOAD hardware limit (~12% headroom).
+- **Strict ELF footprint control**: The packaged binary occupies 43,412 bytes of the 49,152-byte (48 KiB) PT_LOAD hardware limit (~12% headroom).
 
 ### Hardening and fixes applied
 
@@ -40,7 +40,11 @@ A technical review of the codebase highlights several notable DSP and embedded e
 - **Deterministic scalar initialization**: Explicit in-class default member initializers added to `Osc` (`w0_`, `pending_`, `pendingMask_`, `presetIndex_`, `bend_`, `ready_`, `notePending_`, `pendingVelocity_`), eliminating undefined behavior risks for non-BSS (stack/heap) instantiations.
 - **Thread/ISR safety**: Qualified `pendingMask_` as `volatile` to prevent register caching across audio DMA interrupt and UI callback contexts.
 - **Strictly standard modular indexing**: Replaced negative signed bitwise operations in `src/apu_core.h` delay buffers with safe positive modular offsets (`+ 32`), guaranteeing standard-compliant modular arithmetic across all C++ compilers.
-- **Sanitized test suite pass**: All 1,815 test assertions across adapter, feature, runtime, and core audio suites pass with undefined-behavior sanitization (`-fsanitize=undefined -fno-sanitize-recover=all`).
+- **Sanitized test suite pass**: All 1,820 test assertions across adapter, feature, runtime, and core audio suites pass with undefined-behavior sanitization (`-fsanitize=undefined -fno-sanitize-recover=all`).
+- **Curatorial preset volume leveling**: Calibrated channel levels (`pulse1Level`, `pulse2Level`, `waveLevel`) on hot sustained presets (`[2] NES BASS`, `[3] GB WAVE MIX`, `[40] NES OCT ARP`, `[71] NES MAJ 16TH`) by ~-1.7 to -2.0 dB, bringing raw RMS into the -9 to -10 dBFS range and matching the rest of the factory catalog without flattening dynamics into the soft limiter.
+- **Dedicated solo noise articulation**: Enabled Knob A (`COLOR`) on noise solo patches (`VOICE` NOISE / 4):
+  - On Atari 2600 (`X TIA`): sweeps across the four hardware polynomial distortion modes (pure tone divider, 4-bit poly crunch, 5-bit poly metal, 9-bit poly white noise snare).
+  - On NES, Game Boy, and SN76489: values in the upper half (`COLOR >= 512`) engage metallic / periodic short-sequence LFSR noise while the lower half provides authentic white noise.
 
 ## Building and testing
 

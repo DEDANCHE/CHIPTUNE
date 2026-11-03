@@ -107,3 +107,22 @@ and survives saving and recall. See the revision notes for migrating v2.0.0 lega
 | 74 | SID SLOW DEEP | SID; fixed 0.25 Hz, depth 0.35 PWM mode |
 | 75 | NES KICK | Isolated triangle; 24-semitone falling pitch envelope |
 | 76 | PCE TOM | Isolated wave; 12-semitone falling pitch envelope |
+
+## Curatorial Revisions & Dynamic Articulation
+
+### Gain Leveling (Peak vs RMS)
+Presets `02` (`NES BASS`), `03` (`GB WAVE MIX`), `40` (`NES OCT ARP`), and `71` (`NES MAJ 16TH`) have been calibrated to balance output levels across the factory bank. Channel levels (`pulse1Level`, `pulse2Level`, `waveLevel`) are trimmed by ~1.7 to 2.0 dB, bringing raw RMS from ~-7 dBFS into the -9 to -10 dBFS range and keeping sustained peaks comfortably below soft-limiting boundaries without flattening dynamics.
+
+### Dedicated Solo Noise Articulation
+On solo noise patches (`VOICE` NOISE / 4), Knob A (`COLOR`) now modulates LFSR texture and polynomial distortion:
+- **Atari 2600 (`X TIA`)**: Sweeps across the 4 hardware polynomial distortion modes:
+  - `0..255`: Pure tone divider rumble (`[51] X TIA LOW NZ`)
+  - `256..511`: 4-bit poly punchy thud (`[14] X TIA THUD`)
+  - `512..767`: 5-bit poly metallic crunch (`[52] X TIA METAL`)
+  - `768..1023`: 9-bit poly white noise snare (`[28] X TIA SNARE`)
+- **NES, Game Boy, and SN76489 (`NES SNARE` 16, `GB NOISE HIT` 18, `GB HIGH HIT` 63, `PSG METAL` 64)**:
+  - `COLOR < 512`: Authentic long-sequence white noise LFSR (32,767 steps).
+  - `COLOR >= 512`: Periodic / metallic short-sequence LFSR mode (93-step on NES, 127-step on GB, periodic on PSG).
+
+### Tempo-Synced Arpeggio Guide
+Presets `71` (`NES MAJ 16TH`) and `72` (`PCE MIN 16TH`) lock 16th-note arpeggios to the hardware 4-PPQN tempo clock. Setting the `ARP/RATE` parameter to `OCT 1/16` (value 21) or `5TH 1/16` (value 22) enables tempo-synced octaves and fifths on any patch in the bank.

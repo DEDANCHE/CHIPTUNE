@@ -37,7 +37,7 @@ override takes precedence during recall. Legacy preset positions remain unchange
 
 | Slot | Control | Values |
 |---|---|---|
-| 0 | COLOR | 0..1023; chip-specific timbre |
+| 0 | COLOR | 0..1023; chip-specific timbre or noise LFSR mode on solo noise |
 | 1 | DETN/FLT | 0..1023; detune, SID filter, FM depth, solo vibrato, or noise rate |
 | 2 | PRESET | 0..76; original indices 0..73 retained, three appended |
 | 3 | CHIP | 0..7 primary families; 8..12 compatibility entries |
@@ -143,8 +143,8 @@ recall. Engine and timbre transitions use the new short blend.
 
 ## Validation
 
-Built and host-tested on 2026-11-03: 341 core audio, 766 adapter, 613 feature, and
-95 runtime callback checks passed with undefined-behavior sanitization.
+Built and host-tested on 2026-11-03: 341 core audio, 766 adapter, 616 feature, and
+97 runtime callback checks passed with undefined-behavior sanitization.
 The NTS-1 mkII unit builds with ARM GCC 14.2.1 without warnings. The packaged binary is
 37,688 bytes; ELF sections are text 33,487, data 2,944 and bss 6,472 bytes. The actual
 PT_LOAD span is 43,124 bytes, leaving 6,028 bytes below the 48 KiB load limit.
@@ -158,7 +158,7 @@ modes, and finite output at extreme settings. Feature tests add pressure, pitch
 envelopes, transition bounds, and every voice/chip combination in both recall orders.
 Note-on starts after the next render supplies pitch; engine changes rebuild
 channel timers without requiring a new note.
-All 1,815 checks passed. The rebuilt `dist/chipapu.nts1mkiiunit` contains this revision.
+All 1,820 checks passed. The rebuilt `dist/chipapu.nts1mkiiunit` contains this revision.
 The instrumented profiling build also passes memory/export checks; host profiling
 and raw/matched audition generation were exercised. See [development](development.md)
 for the reproducible commands and hardware measurement procedure.

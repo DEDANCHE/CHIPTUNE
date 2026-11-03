@@ -1,9 +1,9 @@
 {
     "package":  "chipapu.nts1mkiiunit",
-    "packageBytes":  37844,
-    "loadBytes":  43284,
-    "headroomBytes":  5868,
-    "sha256":  "0389182118131b4b8670a8ed99eebdea673f3dd27d9660869dc433091f9db367",
+    "packageBytes":  37964,
+    "loadBytes":  43412,
+    "headroomBytes":  5740,
+    "sha256":  "f2aa9d406a8ba91583a82abb3db73389fa94337be5670111c4c4292877388890",
     "callbacks":  17,
     "version":  "2.1.0",
     "cmsisRevision":  "f25cf2c15304ad872a5b9761651d3f57d6202906",
