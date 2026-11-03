@@ -3,15 +3,14 @@
 // the table also documents the parameter values (see docs/PRESETS.md) and is
 // the test material for the host renderer.
 //
-// Presets that measured within about 6 dB (log-spectrum RMS over four time slices
-// at 220 and 880 Hz) of an existing one were dropped; new ones were kept only
-// when they were at least that far from every other preset.
+// Original IDs are reserved for migration. Revision-1 spectral-distance measurements
+// do not describe the revised voicings; v2 audio and hardware validation are pending.
 
 #include "apu_core.h"
 
 namespace chiptune {
 
-constexpr int kNumPresets = 60;
+constexpr int kNumPresets = 74;
 
 namespace detail {
 struct PresetDef {
@@ -38,8 +37,8 @@ inline const PresetDef *presetTable() {
       {"POKEY BASS",  kChipPOKEY,  1, 1, 0, 0, 0, 0, 0, 0.f, 0.f,   false}, // 4-bit poly buzz with a clean sub
       {"POKEY HPF",   kChipPOKEY,  0, 3, 0, 0, 0, 0, 0, 4.f, 0.f,   false}, // high-pass mode
       {"VRC6 LEAD",   kChipVRC6,   0, 1, 0, 0, 0, 5, 0, 0.f, 0.f,   false}, // 12.5 % pulse, saw bass layer
-      {"5B BUZZ",     kChipS5B,    0, 4, 1, 0, 0, 0, 4, 0.f, 0.f,   false}, // Gimmick-style envelope buzz
-      {"TIA BASS",    kChipTIA,    1, 1, 0, 0, 0, 0, 0, 0.f, 0.f,   false}, // 4-bit poly, coarse tuning
+      {"YM 5B BUZZ",     kChipS5B,    0, 4, 1, 0, 0, 0, 4, 0.f, 0.f,   false}, // Gimmick-style envelope buzz
+      {"X TIA KICK",    kChipTIA,    1, 1, 0, 0, 0, 0, 0, 0.f, 0.f,   false}, // 4-bit poly, coarse tuning
       {"NES CHORUS",  kChipNES,    2, 0, 0, 0, 0, 0, 0, 4.f, 0.f,   false}, // two pulses detuned
       {"NES SNARE",   kChipNES,    2, 0, 3, 0, 0, 0, 2, 0.f, 0.f,   false}, // fast-decaying high noise
       {"NES MINOR",   kChipNES,    0, 0, 0, 2, 0, 0, 0, 0.f, 0.f,   false}, // minor arpeggio, 12.5 % pulse
@@ -53,17 +52,17 @@ inline const PresetDef *presetTable() {
       {"PCE ORGAN",   kChipPCE,    0, 0, 0, 0, 5, 0, 0, 2.f, 0.f,   false}, // sine table, octave above
       {"POKEY LEAD",  kChipPOKEY,  0, 0, 0, 0, 0, 4, 0, 2.f, 0.f,   false}, // pure tone with vibrato
       {"VRC6 ARP",    kChipVRC6,   1, 1, 0, 1, 0, 0, 0, 0.f, 0.f,   false}, // 25 % pulse arpeggio, saw layer
-      {"TIA PERC",    kChipTIA,    3, 0, 0, 0, 0, 0, 4, 0.f, 0.f,   false}, // 9-bit poly noise burst
-      {"N163 BELL",   kChipN163,   0, 0, 0, 0, 4, 0, 0, 2.f, 0.f,   false}, // sine plus third harmonic, fifth above
-      {"N163 SAW",    kChipN163,   1, 0, 0, 0, 0, 5, 0, 0.f, 0.f,   false}, // 16-step saw with vibrato
-      {"N163 ORGAN",  kChipN163,   2, 1, 0, 0, 0, 0, 0, 0.f, 0.f,   false}, // additive organ, octave layer
-      {"N163 BUZZ",   kChipN163,   3, 0, 0, 0, 0, 0, 0, 3.f, 0.f,   false}, // rough pulse-sine blend, detuned
-      {"FDS BELL",    kChipFDS,    2, 0, 0, 0, 5, 0, 0, 4.f, 0.f,   false}, // 5th-harmonic wave, light FM
-      {"FDS BASS",    kChipFDS,    0, 1, 0, 0, 0, 0, 0, 10.f, 0.f,  false}, // sine with deep FM, octave down
-      {"FDS WOBBLE",  kChipFDS,    3, 0, 0, 0, 2, 4, 0, 12.f, 0.f,  false}, // triangle, heavy FM, vibrato
-      {"AMIGA SAW",   kChipPaula,  0, 2, 0, 0, 0, 0, 0, 2.f, 0.f,   false}, // 8-bit saw, unison sub
-      {"AMIGA FM",    kChipPaula,  2, 3, 0, 0, 4, 0, 0, 8.f, 0.f,   false}, // organ sample FM
-      {"AMIGA AM",    kChipPaula,  3, 4, 0, 0, 5, 0, 0, 0.f, 0.f,   false}, // saw + octave sample AM
+      {"X TIA SNARE",    kChipTIA,    3, 0, 0, 0, 0, 0, 4, 0.f, 0.f,   false}, // 9-bit poly noise burst
+      {"WT4 BELL",   kChipN163,   0, 0, 0, 0, 4, 0, 0, 2.f, 0.f,   false}, // sine plus third harmonic, fifth above
+      {"WT4 SAW",    kChipN163,   1, 0, 0, 0, 0, 5, 0, 0.f, 0.f,   false}, // 16-step saw with vibrato
+      {"WT4 ORGAN",  kChipN163,   2, 1, 0, 0, 0, 0, 0, 0.f, 0.f,   false}, // additive organ, octave layer
+      {"WT4 BUZZ",   kChipN163,   3, 0, 0, 0, 0, 0, 0, 3.f, 0.f,   false}, // rough pulse-sine blend, detuned
+      {"X FDS BELL",    kChipFDS,    2, 0, 0, 0, 5, 0, 0, 4.f, 0.f,   false}, // 5th-harmonic wave, light FM
+      {"X FDS BASS",    kChipFDS,    0, 1, 0, 0, 0, 0, 0, 10.f, 0.f,  false}, // sine with deep FM, octave down
+      {"X FDS WOBBLE",  kChipFDS,    3, 0, 0, 0, 2, 4, 0, 12.f, 0.f,  false}, // triangle, heavy FM, vibrato
+      {"OLD PCM SAW",   kChipPaula,  0, 2, 0, 0, 0, 0, 0, 2.f, 0.f,   false}, // 8-bit saw, unison sub
+      {"OLD PCM FM",    kChipPaula,  2, 3, 0, 0, 4, 0, 0, 8.f, 0.f,   false}, // organ sample FM
+      {"OLD PCM AM",    kChipPaula,  3, 4, 0, 0, 5, 0, 0, 0.f, 0.f,   false}, // saw + octave sample AM
       // added in the second pass
       {"NES FIFTH",   kChipNES,    2, 0, 0, 0, 4, 0, 0, 0.f, 0.f,   false}, // power-chord pulses
       {"NES OCT ARP", kChipNES,    1, 0, 0, 3, 0, 0, 0, 0.f, 0.f,   false}, // octave-jump arpeggio
@@ -76,16 +75,31 @@ inline const PresetDef *presetTable() {
       {"PCE ARP",     kChipPCE,    3, 0, 0, 1, 0, 0, 0, 0.f, 0.f,   false}, // triangle arpeggio
       {"PCE BELL",    kChipPCE,    0, 3, 0, 0, 4, 0, 0, 12.f, 0.f,  false}, // deep FM at a fifth
       {"POKEY BUZZ",  kChipPOKEY,  3, 1, 0, 0, 0, 0, 0, 0.f, 0.f,   false}, // rough distortion with sub
-      {"5B BASS",     kChipS5B,    0, 1, 0, 0, 0, 0, 0, 0.f, 0.f,   false}, // square with octave sub
-      {"TIA LEAD",    kChipTIA,    0, 0, 0, 0, 0, 0, 0, 0.f, 0.f,   false}, // pure divider tone
-      {"TIA ARP",     kChipTIA,    2, 0, 0, 1, 0, 0, 0, 0.f, 0.f,   false}, // coarse poly arpeggio
-      {"N163 ARP",    kChipN163,   2, 0, 0, 2, 0, 0, 3, 0.f, 0.f,   false}, // organ minor arpeggio, plucked
-      {"FDS BRASS",   kChipFDS,    1, 0, 0, 0, 0, 0, 0, 6.f, 0.f,   false}, // saw carrier, FM at unison
-      {"FDS KEYS",    kChipFDS,    0, 0, 0, 0, 3, 0, 5, 5.f, 0.f,   false}, // electric-piano style FM pluck
-      {"FDS ARP",     kChipFDS,    2, 0, 0, 1, 5, 0, 0, 3.f, 0.f,   false}, // FM bell arpeggio
-      {"AMIGA BASS",  kChipPaula,  0, 1, 0, 0, 0, 0, 0, 0.f, 0.f,   false}, // sample bass with octave down
-      {"AMIGA CHORD", kChipPaula,  2, 2, 0, 2, 0, 0, 0, 0.f, 0.f,   false}, // organ minor arpeggio, unison
-      {"AMIGA BELL",  kChipPaula,  2, 0, 0, 0, 4, 0, 6, 0.f, 0.f,   false}, // organ sample with a fifth, decaying
+      {"YM 5B BASS",     kChipS5B,    0, 1, 0, 0, 0, 0, 0, 0.f, 0.f,   false}, // square with octave sub
+      {"X TIA HAT",    kChipTIA,    0, 0, 0, 0, 0, 0, 0, 0.f, 0.f,   false}, // pure divider tone
+      {"X TIA METAL",     kChipTIA,    2, 0, 0, 1, 0, 0, 0, 0.f, 0.f,   false}, // coarse poly arpeggio
+      {"WT4 ARP",    kChipN163,   2, 0, 0, 2, 0, 0, 3, 0.f, 0.f,   false}, // organ minor arpeggio, plucked
+      {"X FDS BRASS",   kChipFDS,    1, 0, 0, 0, 0, 0, 0, 6.f, 0.f,   false}, // saw carrier, FM at unison
+      {"X FDS KEYS",    kChipFDS,    0, 0, 0, 0, 3, 0, 5, 5.f, 0.f,   false}, // electric-piano style FM pluck
+      {"X FDS ARP",     kChipFDS,    2, 0, 0, 1, 5, 0, 0, 3.f, 0.f,   false}, // FM bell arpeggio
+      {"OLD PCM BASS",  kChipPaula,  0, 1, 0, 0, 0, 0, 0, 0.f, 0.f,   false}, // sample bass with octave down
+      {"OLD PCM CHORD", kChipPaula,  2, 2, 0, 2, 0, 0, 0, 0.f, 0.f,   false}, // organ minor arpeggio, unison
+      {"OLD PCM BELL",  kChipPaula,  2, 0, 0, 0, 4, 0, 6, 0.f, 0.f,   false}, // organ sample with a fifth, decaying
+      // v2: appended IDs; the original 0..59 are never renumbered.
+      {"NES SOLO",    kChipNES,    1, 0, 0, 0, 0, 5, 0, 0.f, 0.f, false},
+      {"NES TRI",     kChipNES,    2, 2, 0, 0, 0, 0, 0, 0.f, 0.f, false},
+      {"GB WAVE SOLO",kChipGB,     2, 2, 0, 0, 0, 0, 0, 0.f, 0.f, false},
+      {"GB NOISE",    kChipGB,     0, 0, 3, 0, 0, 0, 2, 0.f, 0.f, false},
+      {"PSG METAL",   kChipPSG,    0, 0, 5, 0, 0, 0, 4, 0.f, 0.f, false},
+      {"YM ENV SOLO", kChipAY,     0, 3, 0, 0, 0, 0, 0, 0.f, 0.f, false},
+      {"SID SLOW PWM",kChipSID,    2, 0, 0, 0, 0, 0, 0, 0.f, 0.3f, true},
+      {"PCE WAVE",    kChipPCE,    3, 0, 0, 0, 0, 0, 0, 0.f, 0.f, false},
+      {"WT4 SOLO",    kChipN163,   0, 0, 0, 0, 0, 0, 0, 0.f, 0.f, false},
+      {"POKEY POLY",  kChipPOKEY,  3, 0, 0, 0, 0, 0, 0, 0.f, 0.f, false},
+      {"VRC6 SAW",    kChipVRC6,   2, 2, 0, 0, 0, 0, 0, 0.f, 0.f, false},
+      {"NES SYNC ARP",kChipNES,    1, 0, 0, 1, 0, 0, 0, 0.f, 0.f, false},
+      {"PCE SYNC ARP",kChipPCE,    3, 0, 0, 2, 0, 0, 0, 0.f, 0.f, false},
+      {"X FDS TABLE", kChipFDS,    3, 0, 0, 0, 4, 0, 0, 5.f, 0.f, false},
   };
   return t;
 }
@@ -109,6 +123,23 @@ inline ApuParams preset(int index) {
   p.detune = d.detune;
   p.cutoff = d.cutoff;
   p.resonant = d.resonant;
+  if (p.chip == kChipS5B) { p.chip = kChipAY; p.ay5b = true; }
+  if (p.chip == kChipN163) { p.chip = kChipPCE; p.waveBank = 1; }
+  const bool wave = p.chip == kChipGB || p.chip == kChipPCE;
+  const uint16_t color = static_cast<uint16_t>(d.duty * (wave ? 128 : 256) + (wave ? 64 : 128) + (p.waveBank ? 512 : 0));
+  applyColor(p, color);
+  if (index == 16 || index == 18 || index == 63 || index == 64) p.voice = 4;
+  if (index == 60 || index == 69) p.voice = 1;
+  if (index == 61 || index == 62 || index == 70) p.voice = 3;
+  if (index == 65) p.voice = 1;
+  if (index == 66) applyColor(p, 2 * 256 + 32);
+  if (index == 67 || index == 68) p.voice = 1;
+  if (index == 71 || index == 72) p.arpRate = 3;
+  if (p.chip == kChipTIA) {
+    p.voice = 4;
+    p.noise = static_cast<uint8_t>(1 + d.duty);
+    p.decay = d.decay ? d.decay : 4;
+  }
   return p;
 }
 
