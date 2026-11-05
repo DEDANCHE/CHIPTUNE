@@ -33,6 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Math Optimization**: Replaced `std::pow(2.f, ...)` with hardware single-precision `std::exp2(...)` in `src/apu_core.h` and `platform/nts1_mkii/osc.h`.
 
 ### Fixed
+- **DSP Core Loop Safety**: Added a 128-iteration cap in `Apu::render()` and period floor in `Apu::tick()`, eliminating potential event lockups on degenerate timer values.
+- **ARM Cortex-M7 Denormal Flushing**: Added flush-to-zero thresholds on the DC-blocking integrator (`dc_ < 1e-6f`) and SID Chamberlin SVF state variables (`sidLow_`, `sidBand_ < 1e-7f`), preventing CPU cycle penalties during exponential release tails.
+- **Table Index Sanitization**: Masked table indexing (`& 3`) in `pokeyMode()`, `Kind::kPulse`, and `Kind::kFdsMod` duty selection to prevent out-of-bounds array access.
+- **Division-by-Zero & NaN Guards**: Added defensive guards in `polyBlep` (`dt <= 0.f`), `renderSid` (`sv_[0].inc > 0`), `fdsPeriod` (`per >= 1.f`), and `BlipBuf` phase conversion against NaN/negative floats.
+- **LFSR Zero-Stuck Defense**: Added automatic non-zero reseed recovery if LFSR state registers ever encounter an all-zero condition.
+- **Atomic Parameter Bitmask Consumption**: `commitParameters()` in `platform/nts1_mkii/osc.h` now snapshots and clears only consumed parameter bits (`pendingMask_ &= ~mask`), preventing parameter changes arriving from interrupts or MIDI during commit from being lost.
+- **Pitch Bend Mechanical Deadzone**: Added +-2 LSB deadband (8190..8194) around center in `pitchBend()`, suppressing unnecessary `std::exp2` audio block calculations caused by mechanical potentiometer spring jitter.
+- **Single-Precision Cortex-M7 Optimization**: Converted logarithmic volume tables and SID cutoff calculations from double-precision `std::pow` to single-precision `std::exp` and `std::exp2`.
+- **Release Automation**: Updated `tools/release.ps1` to dynamically extract the firmware version from `platform/nts1_mkii/header.c`.
 - **Legato Note-Off Termination**: Corrected note-off voice termination in `platform/nts1_mkii/osc.h` (`if (note != activeNote_) return;`) so releasing a previously held note during legato transitions does not silence the active voice.
 - **Pitch Bend Zero-Bypass**: Added zero-check bypass in `platform/nts1_mkii/osc.h` to skip exponential pitch calculations when pitch bend is centered (8192), eliminating unnecessary CPU overhead on idle notes.
 - **Modular Delay Indexing**: Replaced negative signed bitwise operations in SID delay ring buffers in `src/apu_core.h` with positive modular offsets (`+ 32`), ensuring strict C++ standard compliance across all compilers.

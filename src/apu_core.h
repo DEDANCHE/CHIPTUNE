@@ -112,7 +112,7 @@ public:
 
   // t: time of the step inside the sample about to be read, in samples [0, 1).
   void addStep(float t, float delta) {
-    int phase = static_cast<int>(t * kPhases);
+    int phase = !(t >= 0.f) ? 0 : static_cast<int>(t * kPhases);
     if (phase < 0) phase = 0;
     if (phase >= kPhases) phase = kPhases - 1;
     const float *h = kernel_[phase];
@@ -131,7 +131,7 @@ public:
 
   // Reuse the event engine's kernel for SID reset discontinuities.
   const float *kernel(float t) const {
-    const int p = static_cast<int>(t * kPhases);
+    const int p = !(t >= 0.f) ? 0 : static_cast<int>(t * kPhases);
     return kernel_[p < 0 ? 0 : (p >= kPhases ? kPhases - 1 : p)];
   }
 
@@ -214,7 +214,7 @@ class Apu {
 public:
   // Explicitly resets all state; safe even if static constructors never ran.
   void init(float sampleRate) {
-    sr_ = sampleRate;
+    sr_ = sampleRate >= 8000.f ? sampleRate : 48000.f;
     p_ = ApuParams();
     p1_ = p2_ = sub_ = noise_ = env_ = Chan();
     freq_ = 440.f;
@@ -383,7 +383,7 @@ public:
     const bool lfo = fmMode();
     const bool hp = hpMode();
     float remaining = cps_;
-    for (;;) {
+    for (int iter = 0; iter < 128; ++iter) {
       float dt = remaining;
       if (p1_.on && p1_.timer < dt) dt = p1_.timer;
       if (p2_.on && p2_.timer < dt) dt = p2_.timer;
@@ -417,7 +417,7 @@ public:
     if (gate_) {
       dc_ += (y - dc_) * (1.f / 3300.f);
     } else {
-      dc_ *= 0.99f;
+      dc_ = std::fabs(dc_) < 1e-6f ? 0.f : dc_ * 0.99f;
       if (level_ == 0.f && y < 1e-5f && y > -1e-5f) blip_.zeroAcc(); // shed float drift
     }
     y -= dc_;
@@ -499,7 +499,7 @@ private:
     return p_.colorEnabled ? static_cast<uint8_t>(p_.color >> 7) : (p_.sub == 4 ? 2 : 0);
   }
   bool pokeyLike() const { return p_.chip == kChipPOKEY || p_.chip == kChipTIA; }
-  uint8_t pokeyMode() const { return p_.chip == kChipTIA ? detail::kTiaMode[p_.duty] : p_.duty; }
+  uint8_t pokeyMode() const { return p_.chip == kChipTIA ? detail::kTiaMode[p_.duty & 3] : p_.duty; }
   bool hpMode() const { return p_.chip == kChipPOKEY && p_.sub == 3; }
   bool pceLfo() const { return p_.chip == kChipPCE && p_.sub == 3; }
   bool paulaFm() const { return p_.chip == kChipPaula && p_.sub == 3; }
@@ -561,6 +561,7 @@ private:
   }
 
   void setCarrierPeriod(float period) {
+    if (period < 1.f) period = 1.f;
     const float phaseLeft = p1_.period > 0.f ? unitLevel(p1_.timer / p1_.period) : 1.f;
     p1_.period = period;
     p1_.timer = phaseLeft * period;
@@ -570,10 +571,11 @@ private:
     c.timer -= dt;
     if (c.timer > 0.f) return false;
     c.timer += c.period;
+    if (c.timer <= 0.f) c.timer = c.period > 0.f ? c.period : 1.f;
     switch (kind) {
     case Kind::kPulse:
       c.seq = (c.seq + 1) & 7;
-      c.bit = detail::kDuty[arg][c.seq];
+      c.bit = detail::kDuty[arg & 3][c.seq];
       break;
     case Kind::kWave:
       c.seq = (c.seq + 1) & (p_.chip == kChipFDS ? 63 : 31);
@@ -603,7 +605,7 @@ private:
         {3,0,0,0,5,0,0,0,3,0,0,0,5,0,0,0,3,0,0,0,5,0,0,0,3,0,0,0,5,0,0,0},
         {1,1,2,0,7,7,6,0,1,1,2,0,7,7,6,0,1,1,2,0,7,7,6,0,1,1,2,0,7,7,6,0}};
       static const int8_t adjust[8] = {0,1,2,4,0,-4,-2,-1};
-      const uint8_t op = pattern[p_.duty][c.seq >> 1];
+      const uint8_t op = pattern[p_.duty & 3][c.seq >> 1];
       int next = op == 4 ? 0 : fdsCounter_ + adjust[op];
       next = (next + 128) & 127;
       fdsCounter_ = static_cast<int8_t>(next >= 64 ? next - 128 : next);
@@ -669,6 +671,7 @@ private:
   }
 
   void stepNoise(Chan &c) {
+    if (c.lfsr == 0) c.lfsr = p_.chip == kChipPSG ? 0x8000u : 1u;
     const bool shortMode = p_.noise == 4 || p_.noise == 5 ||
         (p_.colorEnabled && p_.color >= 512 && (p_.chip == kChipPSG || p_.voice == 4));
     if (p_.chip == kChipPSG) {
@@ -718,11 +721,11 @@ private:
       if (v == 0)
         amp_[v] = 0.f;
       else if (c == kChipPSG)
-        amp_[v] = std::pow(10.f, -(15 - v) * 0.1f); // 2 dB per step
+        amp_[v] = std::exp(-(15 - v) * (0.1f * 2.302585092994f)); // 2 dB per step
       else if (c == kChipPOKEY || c == kChipTIA)
         amp_[v] = static_cast<float>(v) * (1.f / 15.f); // linear 4-bit volume
       else
-        amp_[v] = std::pow(2.f, -(15 - v) * 0.5f);  // 3 dB per step
+        amp_[v] = std::exp2(-(15 - v) * 0.5f);  // 3 dB per step
     }
     cps_ = spec_.clk / sr_;
     ctrlAcc_ = 0.f;
@@ -875,7 +878,8 @@ private:
     const float offset = std::floor((fdsBasePitch_ * scaled + 32.f) / 64.f);
     const float pitch = fdsBasePitch_ + offset;
     // A stopped carrier has no scheduled events; retain a finite timer sentinel.
-    return pitch <= 0.f ? 1.0e9f : 65536.f / pitch;
+    const float per = pitch <= 0.f ? 1.0e9f : 65536.f / pitch;
+    return per < 1.f ? 1.f : per;
   }
 
   void updatePeriods() {
@@ -1061,6 +1065,7 @@ private:
   // ---- SID (analog engine) -------------------------------------------------
 
   static float polyBlep(float t, float dt) {
+    if (dt <= 0.f) return 0.f;
     if (t < dt) {
       t /= dt;
       return t + t - t * t - 1.f;
@@ -1080,8 +1085,9 @@ private:
     float cut = p_.cutoff + 0.5f * shapeMod_;
     cut = cut < 0.f ? 0.f : (cut > 1.f ? 1.f : cut);
     sidBypass_ = cut < 0.01f;
-    const float fc = 9000.f * std::pow(0.00667f, cut); // 9 kHz .. 60 Hz
-    sidFTarget_ = 2.f * std::sin(pi * fc / sr_);
+    const float fc = 9000.f * std::exp(-5.0101802f * cut); // 9 kHz .. 60 Hz
+    const float fTarget = 2.f * std::sin(pi * fc / sr_);
+    sidFTarget_ = fTarget > 1.8f ? 1.8f : fTarget;
     sidQTarget_ = p_.resonant ? 0.3f : 1.f;
   }
 
@@ -1158,6 +1164,7 @@ private:
   }
 
   float sidNoiseVoice(SidVoice &v) {
+    if (v.lfsr == 0) v.lfsr = 0x7FFFF8u;
     const uint32_t before = v.acc >> 20;
     v.acc = (v.acc + v.inc) & 0xFFFFFFu;
     uint32_t edges = ((v.acc >> 20) - before) & 0xFu;
@@ -1227,7 +1234,7 @@ private:
         const uint32_t a0 = sv_[0].acc;
         m = gain1() > 0.f ? sidVoice(sv_[0], pw, p_.duty) * gain1() : 0.f;
         if (sync) {
-          const float masterTime = sv_[0].acc < a0 ? 1.f - static_cast<float>(sv_[0].acc) / sv_[0].inc : -1.f;
+          const float masterTime = (sv_[0].inc > 0 && sv_[0].acc < a0) ? 1.f - static_cast<float>(sv_[0].acc) / static_cast<float>(sv_[0].inc) : -1.f;
           m += sidSyncedVoice(sv_[1], masterTime, pw) * gain2();
         } else if (gain2() > 0.f) {
           m += sidVoice(sv_[1], pw, p_.duty) * gain2();
@@ -1256,6 +1263,8 @@ private:
       const float in = sidInputGain_ * mix;
       const float high = in - sidLow_ - sidQ_ * sidBand_;
       sidBand_ += sidF_ * high;
+      if (std::fabs(sidLow_) < 1e-7f) sidLow_ = 0.f;
+      if (std::fabs(sidBand_) < 1e-7f) sidBand_ = 0.f;
       y += sidWet_ * (sidLow_ - mix);
     }
     return detail::softLimit(y * outGain_);

@@ -255,6 +255,7 @@ public:
   // Assumes a 14-bit bend centred on 8192; +-2 semitones.
   void pitchBend(uint16_t bend)
   {
+    if (bend >= 8190 && bend <= 8194) { bend_ = 0.f; return; }
     const float b = (static_cast<float>(bend) - 8192.f) * (1.f / 8192.f);
     bend_ = b < -1.f ? -1.f : (b > 1.f ? 1.f : b);
   }
@@ -284,17 +285,18 @@ public:
   }
 
 private:
-  chiptune::ApuParams resolvedParams() const
+  chiptune::ApuParams resolvedParams() const { return resolvedParams(pendingMask_); }
+  chiptune::ApuParams resolvedParams(uint16_t mask) const
   {
-    chiptune::ApuParams p = pendingMask_ & (1U << PRESET)
+    chiptune::ApuParams p = mask & (1U << PRESET)
         ? chiptune::preset(clampPreset(pending_[PRESET])) : p_;
     // Family must resolve before COLOR, which has chip-specific semantics.
-    if (pendingMask_ & (1U << CHIP)) {
+    if (mask & (1U << CHIP)) {
       applyParameter(p, CHIP, pending_[CHIP]);
       chiptune::applyColor(p, p.color);
     }
     for (uint8_t i = 0; i < NUM_PARAMS; ++i)
-      if (i != PRESET && i != CHIP && (pendingMask_ & (1U << i))) applyParameter(p, i, pending_[i]);
+      if (i != PRESET && i != CHIP && (mask & (1U << i))) applyParameter(p, i, pending_[i]);
     // Pure YM envelope states are not portable FM/sync states on other chips.
     if (p.chip != chiptune::kChipAY && p.voice == 1 && p.sub >= 3) p.sub = 0;
     return p;
@@ -302,15 +304,17 @@ private:
 
   void commitParameters()
   {
-    if (!pendingMask_) return;
-    const auto next = resolvedParams();
+    const uint16_t mask = pendingMask_;
+    if (!mask) return;
+    pendingMask_ &= ~mask;
+    const auto next = resolvedParams(mask);
     if (lastSample_ != 0.f && (next.chip != p_.chip || next.ay5b != p_.ay5b || (next.color >> 7) != (p_.color >> 7) || next.voice != p_.voice)) {
       transitionFrom_ = lastSample_;
       transitionLeft_ = 48;
     }
     p_ = next;
-    if (pendingMask_ & (1U << PRESET)) presetIndex_ = clampPreset(pending_[PRESET]);
-    pendingMask_ = 0;
+    if (mask & (1U << PRESET)) presetIndex_ = clampPreset(pending_[PRESET]);
+
     apu_.setParams(p_);
   }
 
@@ -320,9 +324,11 @@ private:
     ready_ = true;
     p_ = chiptune::preset(0);
     pendingMask_ = 0;
+
     presetIndex_ = 0;
     notePending_ = false;
-    apu_.init(static_cast<float>(getSampleRate()));
+    const float sr = static_cast<float>(getSampleRate());
+    apu_.init(sr >= 8000.f ? sr : 48000.f);
     apu_.setParams(p_);
   }
 

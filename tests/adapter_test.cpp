@@ -260,5 +260,20 @@ int main() {
       check(peak > 0.03f, "voice restarts after reset");
     }
   }
+  // Pitch bend mechanical deadzone: 8190..8194 must produce identical output to 8192 (0 bend)
+  {
+    Osc centered{}, jittered{};
+    centered.setPitch(440.f / 48000.f);
+    jittered.setPitch(440.f / 48000.f);
+    centered.pitchBend(8192);
+    jittered.pitchBend(8193);
+    centered.noteOn(69, 127);
+    jittered.noteOn(69, 127);
+    float outC[256], outJ[256];
+    centered.process(nullptr, outC, 256);
+    jittered.process(nullptr, outJ, 256);
+    check(std::memcmp(outC, outJ, sizeof outC) == 0, "pitch bend mechanical deadzone around center");
+  }
+
   return failures ? 1 : 0;
 }
